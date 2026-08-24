@@ -1,0 +1,3 @@
+Invoice #,Date,Due Date,Amount,Balance,Customer Name,Email,Reference
+AR-1001,01/01/2026,14/01/2026,150.00,150.00,Acme Corp,billing@acmecorp.example.com,PO-456
+AR-1002,05/01/2026,19/01/2026,300.50,300.50,Wayne Enterprises,accounts@wayne.example.com,

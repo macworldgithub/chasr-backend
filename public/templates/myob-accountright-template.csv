@@ -1,0 +1,3 @@
+Invoice No.,Date,Due Date,Customer Name,Customer Email,Total Incl Tax,Balance Due
+00000015,2026-01-01,2026-01-14,Acme Corp,billing@acmecorp.example.com,150.00,150.00
+00000016,2026-01-05,2026-01-19,Wayne Enterprises,accounts@wayne.example.com,300.50,300.50

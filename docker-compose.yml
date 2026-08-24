@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: chasr-mongodb
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: chasr
+      MONGO_INITDB_ROOT_PASSWORD: chasr_dev_secret
+      MONGO_INITDB_DATABASE: chasr
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - chasr-net
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: chasr-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    command: redis-server --save 20 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - chasr-net
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  chasr-net:
+    driver: bridge
