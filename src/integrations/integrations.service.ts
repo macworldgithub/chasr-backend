@@ -2,12 +2,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { AccountingConnection, Provider } from './schemas/accounting-connection.schema';
+import {
+  AccountingConnection,
+  Provider,
+} from './schemas/accounting-connection.schema';
 import { SyncLog } from './schemas/sync-log.schema';
 import { SyncOrchestratorService } from '../sync/sync-orchestrator.service';
 import { ConnectorFactory } from '../connectors/connector.factory';
 import { VaultService } from '../credential-vault/vault.service';
 import { AuditLoggerService } from '../audit/audit-logger.service';
+import { normalizeOrgId } from '../shared/utils/org-id.util';
 
 @Injectable()
 export class IntegrationsService {
@@ -23,15 +27,25 @@ export class IntegrationsService {
   ) {}
 
   async getConnections(orgId: string): Promise<AccountingConnection[]> {
+    const normalizedOrgId = normalizeOrgId(orgId);
+
     return this.connectionModel
-      .find({ orgId: new Types.ObjectId(orgId), isDeleted: false })
+      .find({ orgId: normalizedOrgId, isDeleted: false })
       .select('-credentials') // Never return credentials to client
       .exec();
   }
 
-  async getConnection(orgId: string, connectionId: string): Promise<{ connection: AccountingConnection, recentLogs: SyncLog[] }> {
+  async getConnection(
+    orgId: string,
+    connectionId: string,
+  ): Promise<{ connection: AccountingConnection; recentLogs: SyncLog[] }> {
+    const normalizedOrgId = normalizeOrgId(orgId);
     const connection = await this.connectionModel
-      .findOne({ _id: new Types.ObjectId(connectionId), orgId: new Types.ObjectId(orgId), isDeleted: false })
+      .findOne({
+        _id: new Types.ObjectId(connectionId),
+        orgId: normalizedOrgId,
+        isDeleted: false,
+      })
       .select('-credentials')
       .exec();
 
@@ -48,10 +62,15 @@ export class IntegrationsService {
     return { connection, recentLogs };
   }
 
-  async deleteConnection(orgId: string, connectionId: string, userId: string): Promise<void> {
+  async deleteConnection(
+    orgId: string,
+    connectionId: string,
+    userId: string,
+  ): Promise<void> {
+    const normalizedOrgId = normalizeOrgId(orgId);
     const connection = await this.connectionModel.findOne({
       _id: new Types.ObjectId(connectionId),
-      orgId: new Types.ObjectId(orgId),
+      orgId: normalizedOrgId,
       isDeleted: false,
     });
 
@@ -62,7 +81,9 @@ export class IntegrationsService {
     // Try to revoke tokens with provider
     if (connection.provider !== 'csv') {
       try {
-        const connector = this.connectorFactory.getConnector(connection.provider);
+        const connector = this.connectorFactory.getConnector(
+          connection.provider,
+        );
         await connector.revokeAccess(connection);
       } catch (err) {
         // Log but continue deletion
@@ -71,11 +92,18 @@ export class IntegrationsService {
 
     await this.connectionModel.updateOne(
       { _id: new Types.ObjectId(connectionId) },
-      { $set: { isDeleted: true, deletedAt: new Date(), status: 'disconnected', credentials: {} } },
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          status: 'disconnected',
+          credentials: {},
+        },
+      },
     );
 
     await this.auditLogger.log({
-      orgId: new Types.ObjectId(orgId),
+      orgId: normalizeOrgId(orgId) as any,
       actor: userId,
       event: 'connection.revoked',
       outcome: 'success',
@@ -83,11 +111,17 @@ export class IntegrationsService {
     });
   }
 
-  async getSyncLogs(orgId: string, connectionId: string, page: number = 1, limit: number = 50): Promise<SyncLog[]> {
+  async getSyncLogs(
+    orgId: string,
+    connectionId: string,
+    page: number = 1,
+    limit: number = 50,
+  ): Promise<SyncLog[]> {
+    const normalizedOrgId = normalizeOrgId(orgId);
     return this.syncLogModel
       .find({
         connectionId: new Types.ObjectId(connectionId),
-        orgId: new Types.ObjectId(orgId),
+        orgId: normalizedOrgId,
       })
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
@@ -96,15 +130,22 @@ export class IntegrationsService {
   }
 
   async getSyncLogDetail(orgId: string, syncLogId: string): Promise<SyncLog> {
-    const log = await this.syncLogModel.findOne({
-      _id: new Types.ObjectId(syncLogId),
-      orgId: new Types.ObjectId(orgId),
-    }).exec();
+    const normalizedOrgId = normalizeOrgId(orgId);
+    const log = await this.syncLogModel
+      .findOne({
+        _id: new Types.ObjectId(syncLogId),
+        orgId: normalizedOrgId,
+      })
+      .exec();
     if (!log) throw new NotFoundException('Sync log not found');
     return log;
   }
 
-  async triggerManualSync(orgId: string, connectionId: string, userId: string): Promise<{ jobId: string, syncLogId: string }> {
+  async triggerManualSync(
+    orgId: string,
+    connectionId: string,
+    userId: string,
+  ): Promise<{ jobId: string; syncLogId: string }> {
     return this.orchestrator.dispatchFullSync(connectionId, orgId, userId);
   }
 
@@ -112,17 +153,25 @@ export class IntegrationsService {
     return this.orchestrator.getJobStatus(jobId);
   }
 
-  async createCredentialConnection(orgId: string, provider: Provider, authMethod: string, credentials: Record<string, string>, userId: string): Promise<AccountingConnection> {
+  async createCredentialConnection(
+    orgId: string,
+    provider: Provider,
+    authMethod: string,
+    credentials: Record<string, string>,
+    userId: string,
+  ): Promise<AccountingConnection> {
+    const normalizedOrgId = normalizeOrgId(orgId);
+
     // Encrypt all string values in the credentials object
     const encryptedCredentials: Record<string, string> = {};
     for (const [key, value] of Object.entries(credentials)) {
       if (typeof value === 'string') {
-         encryptedCredentials[`encrypted_${key}`] = this.vault.encrypt(value);
+        encryptedCredentials[`encrypted_${key}`] = this.vault.encrypt(value);
       }
     }
 
     const connection = await this.connectionModel.create({
-      orgId: new Types.ObjectId(orgId),
+      orgId: normalizedOrgId,
       provider: provider as any,
       authMethod: authMethod as any,
       credentials: encryptedCredentials,
@@ -130,7 +179,7 @@ export class IntegrationsService {
     });
 
     await this.auditLogger.log({
-      orgId: new Types.ObjectId(orgId),
+      orgId: normalizedOrgId as any,
       actor: userId,
       event: 'connection.created',
       outcome: 'success',

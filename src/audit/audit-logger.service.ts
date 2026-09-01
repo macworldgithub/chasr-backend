@@ -2,10 +2,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { normalizeOrgId } from '../shared/utils/org-id.util';
 import { AuditLog, AuditEventType } from './schemas/audit-log.schema';
 
 export interface AuditLogEntry {
-  orgId: Types.ObjectId;
+  orgId: Types.ObjectId | string;
   actor: string;
   ip?: string;
   event: AuditEventType;
@@ -29,9 +30,11 @@ export class AuditLoggerService {
   ) {}
 
   async log(entry: AuditLogEntry): Promise<void> {
+    const normalizedOrgId = normalizeOrgId(String(entry.orgId));
+
     // Append-only — always create, never update
     await this.auditLogModel.create({
-      orgId: entry.orgId,
+      orgId: normalizedOrgId,
       actor: entry.actor,
       ip: entry.ip,
       event: entry.event,

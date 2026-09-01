@@ -7,6 +7,7 @@ import { Redis } from 'ioredis';
 import { VaultService } from '../../credential-vault/vault.service';
 import { AuditLoggerService } from '../../audit/audit-logger.service';
 import { AccountingConnection } from '../../integrations/schemas/accounting-connection.schema';
+import { normalizeOrgId } from '../../shared/utils/org-id.util';
 
 const QUICKBOOKS_TOKEN_URL =
   'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
@@ -124,9 +125,11 @@ export class QuickBooksOAuthService {
       companyInfoResp.data?.companyInfo?.CompanyName ||
       'QuickBooks Company';
 
+    const normalizedOrgId = normalizeOrgId(orgId);
+
     const connection = await this.connectionModel.findOneAndUpdate(
       {
-        orgId: new Types.ObjectId(orgId),
+        orgId: normalizedOrgId,
         provider: 'quickbooks',
         isDeleted: false,
       },
@@ -146,7 +149,7 @@ export class QuickBooksOAuthService {
           },
         },
         $setOnInsert: {
-          orgId: new Types.ObjectId(orgId),
+          orgId: normalizedOrgId,
           provider: 'quickbooks',
           isDeleted: false,
           settings: {
@@ -161,7 +164,7 @@ export class QuickBooksOAuthService {
     );
 
     await this.auditLogger.log({
-      orgId: new Types.ObjectId(orgId),
+      orgId: normalizedOrgId as any,
       actor: userId,
       event: 'connection.created',
       outcome: 'success',

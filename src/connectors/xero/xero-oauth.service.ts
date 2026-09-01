@@ -8,6 +8,7 @@ import { Redis } from 'ioredis';
 import { VaultService } from '../../credential-vault/vault.service';
 import { AuditLoggerService } from '../../audit/audit-logger.service';
 import { AccountingConnection } from '../../integrations/schemas/accounting-connection.schema';
+import { normalizeOrgId } from '../../shared/utils/org-id.util';
 
 const XERO_SCOPES =
   'openid profile email accounting.transactions.read accounting.contacts.read accounting.settings.read offline_access';
@@ -130,8 +131,10 @@ export class XeroOAuthService {
 
     const tenant = tenantsResp.data[0];
 
+    const normalizedOrgId = normalizeOrgId(orgId);
+
     const connection = await this.connectionModel.findOneAndUpdate(
-      { orgId: new Types.ObjectId(orgId), provider: 'xero', isDeleted: false },
+      { orgId: normalizedOrgId, provider: 'xero', isDeleted: false },
       {
         $set: {
           authMethod: 'oauth2',
@@ -146,7 +149,7 @@ export class XeroOAuthService {
           },
         },
         $setOnInsert: {
-          orgId: new Types.ObjectId(orgId),
+          orgId: normalizedOrgId,
           provider: 'xero',
           isDeleted: false,
           settings: {
@@ -161,7 +164,7 @@ export class XeroOAuthService {
     );
 
     await this.auditLogger.log({
-      orgId: new Types.ObjectId(orgId),
+      orgId: normalizedOrgId as any,
       actor: userId,
       event: 'connection.created',
       outcome: 'success',
@@ -246,9 +249,11 @@ export class XeroOAuthService {
         },
       );
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+
       // Log but don't throw — we still want to soft-delete the connection
       this.logger.warn(
-        `Failed to revoke Xero tokens for connection ${connection._id}: ${err.message}`,
+        `Failed to revoke Xero tokens for connection ${connection._id}: ${message}`,
       );
     }
   }

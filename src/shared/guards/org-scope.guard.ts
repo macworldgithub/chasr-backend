@@ -47,20 +47,19 @@ export class OrgScopeGuard implements CanActivate {
     console.log(token, 'token');
 
     try {
-      // Secret must match the one used by Chasr's main API server
       const payload = this.jwtService.verify(token);
-      console.log(payload, '..');
+      console.log('JWT payload:', payload);
 
       if (!payload.orgId) {
         throw new UnauthorizedException('JWT is missing orgId claim');
       }
 
-      // Inject into request for controllers to use
       request.orgId = payload.orgId;
       request.user = { id: payload.sub ?? payload.userId, ...payload };
 
       return true;
     } catch (err) {
+      console.error('JWT verification failed:', err);
       throw new UnauthorizedException('Invalid JWT');
     }
   }

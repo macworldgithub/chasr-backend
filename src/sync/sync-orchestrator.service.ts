@@ -4,10 +4,9 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue, Job } from 'bullmq';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import {
-  AccountingConnection,
-} from '../integrations/schemas/accounting-connection.schema';
+import { AccountingConnection } from '../integrations/schemas/accounting-connection.schema';
 import { SyncLog } from '../integrations/schemas/sync-log.schema';
+import { normalizeOrgId } from '../shared/utils/org-id.util';
 import { SyncJobData } from './sync.types';
 
 @Injectable()
@@ -33,11 +32,12 @@ export class SyncOrchestratorService {
     orgId: string,
     triggeredBy: string,
   ): Promise<{ jobId: string; syncLogId: string }> {
+    const normalizedOrgId = normalizeOrgId(orgId);
     const connection = await this.validateConnection(connectionId, orgId);
 
     const syncLog = await this.syncLogModel.create({
       connectionId: new Types.ObjectId(connectionId),
-      orgId: new Types.ObjectId(orgId),
+      orgId: normalizedOrgId,
       triggerType: 'manual',
       status: 'started',
       actor: triggeredBy,
@@ -78,17 +78,14 @@ export class SyncOrchestratorService {
     syncLogId: string,
     triggeredBy: string = 'scheduler',
   ): Promise<Job<SyncJobData>> {
-    return this.syncQueue.add(
-      'incremental-sync',
-      {
-        type: 'incremental_sync',
-        connectionId,
-        orgId,
-        triggeredBy,
-        triggerType: 'scheduled',
-        syncLogId,
-      },
-    );
+    return this.syncQueue.add('incremental-sync', {
+      type: 'incremental_sync',
+      connectionId,
+      orgId,
+      triggeredBy,
+      triggerType: 'scheduled',
+      syncLogId,
+    });
   }
 
   /**
@@ -101,9 +98,11 @@ export class SyncOrchestratorService {
     triggeredBy: string,
     csvMeta: Record<string, any>,
   ): Promise<{ jobId: string; syncLogId: string }> {
+    const normalizedOrgId = normalizeOrgId(orgId);
+
     // CSV doesn't have a connectionId — use a placeholder
     const syncLog = await this.syncLogModel.create({
-      orgId: new Types.ObjectId(orgId),
+      orgId: normalizedOrgId,
       connectionId: new Types.ObjectId(), // Synthetic ID for CSV
       triggerType: 'csv_upload',
       status: 'started',
@@ -112,19 +111,16 @@ export class SyncOrchestratorService {
       csvMeta,
     });
 
-    const job = await this.syncQueue.add(
-      'csv-ingest',
-      {
-        type: 'csv_ingest',
-        connectionId: 'csv',
-        orgId,
-        triggeredBy,
-        triggerType: 'csv_upload',
-        csvUploadId: uploadId,
-        csvMappings: mappings,
-        syncLogId: syncLog._id.toString(),
-      },
-    );
+    const job = await this.syncQueue.add('csv-ingest', {
+      type: 'csv_ingest',
+      connectionId: 'csv',
+      orgId,
+      triggeredBy,
+      triggerType: 'csv_upload',
+      csvUploadId: uploadId,
+      csvMappings: mappings,
+      syncLogId: syncLog._id.toString(),
+    });
 
     return { jobId: job.id!, syncLogId: syncLog._id.toString() };
   }
@@ -161,16 +157,15 @@ export class SyncOrchestratorService {
     connectionId: string,
     orgId: string,
   ): Promise<AccountingConnection> {
+    const normalizedOrgId = normalizeOrgId(orgId);
     const connection = await this.connectionModel.findOne({
       _id: new Types.ObjectId(connectionId),
-      orgId: new Types.ObjectId(orgId),
+      orgId: normalizedOrgId,
       isDeleted: false,
     });
 
     if (!connection) {
-      throw new NotFoundException(
-        `Connection not found: ${connectionId}`,
-      );
+      throw new NotFoundException(`Connection not found: ${connectionId}`);
     }
 
     return connection;
