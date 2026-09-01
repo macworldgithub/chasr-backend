@@ -4,7 +4,12 @@ import { Document, Types } from 'mongoose';
 
 @Schema({ timestamps: true, collection: 'payments' })
 export class Payment extends Document {
-  @Prop({ type: Types.ObjectId, ref: 'Organisation', required: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'Organisation',
+    required: true,
+    index: true,
+  })
   orgId: Types.ObjectId;
 
   @Prop({ required: true })

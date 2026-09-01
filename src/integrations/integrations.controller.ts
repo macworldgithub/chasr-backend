@@ -14,6 +14,15 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { IntegrationsService } from './integrations.service';
 import { XeroOAuthService } from '../connectors/xero/xero-oauth.service';
 import { MyobOAuthService } from '../connectors/myob/myob-oauth.service';
@@ -28,6 +37,8 @@ import {
 import type { Provider } from './schemas/accounting-connection.schema';
 
 @Controller('integrations')
+@ApiTags('Integrations')
+@ApiBearerAuth()
 @UseGuards(OrgScopeGuard)
 export class IntegrationsController {
   constructor(
@@ -42,11 +53,20 @@ export class IntegrationsController {
   // ── Connection Management ───────────────────────────────────────────────────
 
   @Get('connections')
+  @ApiOperation({ summary: 'List accounting connections for the current org' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of active accounting connections',
+  })
   async getConnections(@Req() req: any) {
     return this.integrationsService.getConnections(req.orgId);
   }
 
   @Get('connections/:id')
+  @ApiOperation({
+    summary: 'Fetch a single accounting connection and recent sync logs',
+  })
+  @ApiParam({ name: 'id', description: 'Connection ID' })
   async getConnection(@Req() req: any, @Param('id') connectionId: string) {
     return this.integrationsService.getConnection(req.orgId, connectionId);
   }
@@ -78,6 +98,11 @@ export class IntegrationsController {
   // ── OAuth Flows ─────────────────────────────────────────────────────────────
 
   @Post('connections/xero/auth-url')
+  @ApiOperation({ summary: 'Generate the Xero OAuth authorization URL' })
+  @ApiResponse({
+    status: 201,
+    description: 'Authorization URL generated successfully',
+  })
   async getXeroAuthUrl(@Req() req: any) {
     return this.xeroOAuth.generateAuthUrl(req.orgId, req.user.id);
   }
@@ -89,7 +114,7 @@ export class IntegrationsController {
     @Query('state') state: string,
   ) {
     if (!code || !state) throw new BadRequestException('Missing code or state');
-    const connection = await this.xeroOAuth.exchangeCode(code, state);
+    const { connection } = await this.xeroOAuth.exchangeCode(code, state);
     // Trigger initial sync automatically
     await this.orchestrator.dispatchFullSync(
       connection._id.toString(),
@@ -100,6 +125,7 @@ export class IntegrationsController {
   }
 
   @Post('connections/myob/auth-url')
+  @ApiOperation({ summary: 'Generate the MYOB OAuth authorization URL' })
   async getMyobAuthUrl(@Req() req: any) {
     return this.myobOAuth.generateAuthUrl(req.orgId, req.user.id);
   }
@@ -199,6 +225,11 @@ export class IntegrationsController {
   }
 
   @Post('csv/mappings')
+  @ApiOperation({
+    summary:
+      'Validate a CSV mapping configuration against the uploaded dataset',
+  })
+  @ApiBody({ type: CsvCommitDto })
   async validateMappings(@Body() body: CsvCommitDto) {
     return this.csvConnector.validateMappings(body.uploadId, body.mappings);
   }

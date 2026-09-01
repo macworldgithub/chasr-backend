@@ -65,7 +65,7 @@ export class InviteController {
     const invite = await this.inviteService.validateAndConsumeInvite(token, ip);
     return {
       provider: invite.provider,
-      inviterEmail: invite.createdByUserId, // Would look up real email in a full system
+      inviterEmail: invite.createdByUserId,
       inviteeEmail: invite.inviteeEmail,
     };
   }
@@ -73,7 +73,6 @@ export class InviteController {
   @Post('redeem/:token/xero/auth-url')
   async getRedeemXeroAuthUrl(@Param('token') token: string, @Ip() ip: string) {
     const invite = await this.inviteService.validateAndConsumeInvite(token, ip);
-    // Use the invite token string as a synthetic userId for audit purposes
     return this.xeroOAuth.generateAuthUrl(
       invite.orgId.toString(),
       `invite:${token.slice(0, 8)}`,
@@ -88,12 +87,10 @@ export class InviteController {
     @Ip() ip: string,
   ) {
     if (!code || !state) throw new BadRequestException('Missing code or state');
+
     const invite = await this.inviteService.validateAndConsumeInvite(token, ip);
+    const { connection } = await this.xeroOAuth.exchangeCode(code, state);
 
-    // Exchange the code
-    const connection = await this.xeroOAuth.exchangeCode(code, state);
-
-    // Mark as redeemed
     await this.inviteService.redeemInvite(token, connection._id.toString(), ip);
 
     return { success: true, connectionId: connection._id };

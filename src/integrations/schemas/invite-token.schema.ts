@@ -41,7 +41,6 @@ export class InviteToken extends Document {
 
 export const InviteTokenSchema = SchemaFactory.createForClass(InviteToken);
 
-InviteTokenSchema.index({ token: 1 }, { unique: true });
 // TTL auto-cleanup — MongoDB removes documents when expiresAt is reached
 InviteTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 // Org-scoped listing for admin management view
