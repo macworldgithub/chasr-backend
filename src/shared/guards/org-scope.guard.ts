@@ -35,6 +35,7 @@ export class OrgScopeGuard implements CanActivate {
       .switchToHttp()
       .getRequest<Request & { orgId?: string; user?: any }>();
     const authHeader = request.headers.authorization;
+    console.log('Authorization Header:', authHeader); // Debugging line
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       throw new UnauthorizedException(
@@ -43,10 +44,12 @@ export class OrgScopeGuard implements CanActivate {
     }
 
     const token = authHeader.split(' ')[1];
+    console.log(token, 'token');
 
     try {
       // Secret must match the one used by Chasr's main API server
       const payload = this.jwtService.verify(token);
+      console.log(payload, '..');
 
       if (!payload.orgId) {
         throw new UnauthorizedException('JWT is missing orgId claim');
