@@ -7,6 +7,8 @@ import { XeroOAuthService } from './xero/xero-oauth.service';
 import { XeroWebhookHandler } from './xero/xero-webhook.handler';
 import { MyobConnector } from './myob/myob.connector';
 import { MyobOAuthService } from './myob/myob-oauth.service';
+import { QuickBooksConnector } from './quickbooks/quickbooks.connector';
+import { QuickBooksOAuthService } from './quickbooks/quickbooks-oauth.service';
 import { CsvConnector } from './csv/csv.connector';
 import { CsvMapperService } from './csv/csv-mapper.service';
 import { ConnectorFactory } from './connector.factory';
@@ -16,7 +18,10 @@ import {
   AccountingConnection,
   AccountingConnectionSchema,
 } from '../integrations/schemas/accounting-connection.schema';
-import { SyncLog, SyncLogSchema } from '../integrations/schemas/sync-log.schema';
+import {
+  SyncLog,
+  SyncLogSchema,
+} from '../integrations/schemas/sync-log.schema';
 import { Invoice, InvoiceSchema } from '../integrations/schemas/invoice.schema';
 
 @Module({
@@ -36,6 +41,8 @@ import { Invoice, InvoiceSchema } from '../integrations/schemas/invoice.schema';
     XeroOAuthService,
     MyobConnector,
     MyobOAuthService,
+    QuickBooksConnector,
+    QuickBooksOAuthService,
     CsvConnector,
     CsvMapperService,
     ConnectorFactory,
@@ -45,6 +52,7 @@ import { Invoice, InvoiceSchema } from '../integrations/schemas/invoice.schema';
     CsvConnector,
     XeroOAuthService,
     MyobOAuthService,
+    QuickBooksOAuthService,
     CsvMapperService, // Exported for unit tests
   ],
 })

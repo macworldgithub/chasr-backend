@@ -257,10 +257,8 @@ export class DataMapperService {
     return {
       externalId: raw.UID,
       name,
-      emails:
-        raw.Addresses?.map((a: any) => a.Email).filter(Boolean) ?? [],
-      phones:
-        raw.Addresses?.map((a: any) => a.Phone1).filter(Boolean) ?? [],
+      emails: raw.Addresses?.map((a: any) => a.Email).filter(Boolean) ?? [],
+      phones: raw.Addresses?.map((a: any) => a.Phone1).filter(Boolean) ?? [],
       address: raw.Addresses?.[0]
         ? {
             street: raw.Addresses[0].Street,
@@ -302,6 +300,62 @@ export class DataMapperService {
     };
   }
 
+  // ── Normalisation — QuickBooks ────────────────────────────────────────────
+
+  private normaliseContactQuickBooks(raw: any): NormalisedContact {
+    const primaryEmail =
+      raw.PrimaryEmailAddr?.Address ?? raw.PrimaryPhone?.FreeFormNumber ?? null;
+    const phone =
+      raw.PrimaryPhone?.FreeFormNumber ?? raw.Mobile?.FreeFormNumber ?? null;
+
+    return {
+      externalId: raw.Id,
+      name: raw.DisplayName || raw.CompanyName || 'QuickBooks Customer',
+      emails: primaryEmail ? [primaryEmail] : [],
+      phones: phone ? [phone] : [],
+      address: raw.BillAddr
+        ? {
+            street: raw.BillAddr.Line1 ?? undefined,
+            city: raw.BillAddr.City ?? undefined,
+            state: raw.BillAddr.CountrySubDivisionCode ?? undefined,
+            postcode: raw.BillAddr.PostalCode ?? undefined,
+            country: raw.BillAddr.Country ?? 'Australia',
+          }
+        : null,
+      paymentTermsDays: raw.TermsRef?.value ? Number(raw.TermsRef.value) : null,
+    };
+  }
+
+  private normaliseInvoiceQuickBooks(raw: any): NormalisedInvoice {
+    return {
+      externalId: raw.Id,
+      invoiceNumber: raw.DocNumber ?? raw.Id,
+      issueDate: raw.TxnDate ? new Date(raw.TxnDate) : undefined,
+      dueDate: raw.DueDate ? new Date(raw.DueDate) : new Date(),
+      total: raw.TotalAmt ?? 0,
+      balanceDue: raw.Balance ?? raw.TotalAmt ?? 0,
+      currency: raw.CurrencyRef?.value ?? 'AUD',
+      status: this.mapQuickBooksInvoiceStatus(raw),
+      externalContactId: raw.CustomerRef?.value ?? null,
+      pdfUrl: raw.PrivateNote ?? null,
+    };
+  }
+
+  private normalisePaymentQuickBooks(raw: any): NormalisedPayment {
+    return {
+      externalId: raw.Id,
+      date: raw.TxnDate ? new Date(raw.TxnDate) : new Date(),
+      amount: raw.TotalAmt ?? 0,
+      currency: raw.CurrencyRef?.value ?? 'AUD',
+      method: raw.PaymentMethodRef?.name ?? 'BANK',
+      reference: raw.PrivateNote ?? raw.PaymentRefNum ?? '',
+      allocatedExternalInvoiceIds:
+        raw.Line?.map((line: any) => line.LinkedTxn?.[0]?.TxnId).filter(
+          Boolean,
+        ) ?? [],
+    };
+  }
+
   // ── Normalisation — CSV ───────────────────────────────────────────────────
   // CSV rows are already normalised by CsvMapperService, passed through as-is.
 
@@ -322,6 +376,7 @@ export class DataMapperService {
   private normaliseContact(source: string, raw: any): NormalisedContact {
     if (source === 'xero') return this.normaliseContactXero(raw);
     if (source === 'myob') return this.normaliseContactMyob(raw);
+    if (source === 'quickbooks') return this.normaliseContactQuickBooks(raw);
     if (source === 'csv') return this.normaliseContactCsv(raw);
     throw new Error(`Unknown source: ${source}`);
   }
@@ -329,6 +384,7 @@ export class DataMapperService {
   private normaliseInvoice(source: string, raw: any): NormalisedInvoice {
     if (source === 'xero') return this.normaliseInvoiceXero(raw);
     if (source === 'myob') return this.normaliseInvoiceMyob(raw);
+    if (source === 'quickbooks') return this.normaliseInvoiceQuickBooks(raw);
     if (source === 'csv') return this.normaliseInvoiceCsv(raw);
     throw new Error(`Unknown source: ${source}`);
   }
@@ -336,6 +392,7 @@ export class DataMapperService {
   private normalisePayment(source: string, raw: any): NormalisedPayment {
     if (source === 'xero') return this.normalisePaymentXero(raw);
     if (source === 'myob') return this.normalisePaymentMyob(raw);
+    if (source === 'quickbooks') return this.normalisePaymentQuickBooks(raw);
     if (source === 'csv') return this.normalisePaymentCsv(raw);
     throw new Error(`Unknown source: ${source}`);
   }
@@ -405,5 +462,16 @@ export class DataMapperService {
     if (!myobDate) return null;
     const match = myobDate.match(/\/Date\((\d+)/);
     return match ? new Date(parseInt(match[1], 10)) : null;
+  }
+
+  private mapQuickBooksInvoiceStatus(raw: any): string {
+    const total = Number(raw.TotalAmt ?? 0);
+    const balance = Number(raw.Balance ?? raw.TotalAmt ?? 0);
+
+    if (raw.PrivateNote === 'VOID' || (raw.Balance === 0 && raw.TotalAmt === 0))
+      return 'VOIDED';
+    if (balance <= 0 || raw.Balance === 0) return 'PAID';
+    if (total > 0 && balance > 0) return 'AUTHORISED';
+    return 'OPEN';
   }
 }

@@ -3,6 +3,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { BaseConnector } from './base.connector';
 import { XeroConnector } from './xero/xero.connector';
 import { MyobConnector } from './myob/myob.connector';
+import { QuickBooksConnector } from './quickbooks/quickbooks.connector';
 import { Provider } from '../integrations/schemas/accounting-connection.schema';
 
 /**
@@ -21,6 +22,7 @@ export class ConnectorFactory {
   constructor(
     private readonly xeroConnector: XeroConnector,
     private readonly myobConnector: MyobConnector,
+    private readonly quickBooksConnector: QuickBooksConnector,
   ) {}
 
   getConnector(provider: Provider | string): BaseConnector {
@@ -29,6 +31,8 @@ export class ConnectorFactory {
         return this.xeroConnector;
       case 'myob':
         return this.myobConnector;
+      case 'quickbooks':
+        return this.quickBooksConnector;
       default:
         throw new NotFoundException(
           `No connector registered for provider: ${provider}`,
