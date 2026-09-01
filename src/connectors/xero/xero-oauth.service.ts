@@ -7,9 +7,7 @@ import axios from 'axios';
 import { Redis } from 'ioredis';
 import { VaultService } from '../../credential-vault/vault.service';
 import { AuditLoggerService } from '../../audit/audit-logger.service';
-import {
-  AccountingConnection,
-} from '../../integrations/schemas/accounting-connection.schema';
+import { AccountingConnection } from '../../integrations/schemas/accounting-connection.schema';
 
 const XERO_SCOPES =
   'openid profile email accounting.transactions.read accounting.contacts.read accounting.settings.read offline_access';
@@ -19,10 +17,18 @@ const XERO_TOKEN_URL = 'https://identity.xero.com/connect/token';
 const XERO_CONNECTIONS_URL = 'https://api.xero.com/connections';
 const XERO_REVOKE_URL = 'https://identity.xero.com/connect/revocation';
 
+export interface XeroOAuthExchangeResult {
+  connection: AccountingConnection;
+  orgId: string;
+  userId: string;
+}
+
 @Injectable()
 export class XeroOAuthService {
   private readonly logger = new Logger(XeroOAuthService.name);
-  private readonly redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+  private readonly redis = new Redis(
+    process.env.REDIS_URL || 'redis://localhost:6379',
+  );
 
   constructor(
     @InjectModel(AccountingConnection.name)
@@ -74,7 +80,7 @@ export class XeroOAuthService {
   async exchangeCode(
     code: string,
     state: string,
-  ): Promise<AccountingConnection> {
+  ): Promise<XeroOAuthExchangeResult> {
     const stored = await this.redis.get(`xero:pkce:${state}`);
     if (!stored) {
       throw new BadRequestException(
@@ -144,7 +150,9 @@ export class XeroOAuthService {
           provider: 'xero',
           isDeleted: false,
           settings: {
-            syncFrequencyMinutes: Number(process.env.DEFAULT_SYNC_FREQUENCY_MINUTES ?? 30),
+            syncFrequencyMinutes: Number(
+              process.env.DEFAULT_SYNC_FREQUENCY_MINUTES ?? 30,
+            ),
             lookbackMonths: Number(process.env.DEFAULT_LOOKBACK_MONTHS ?? 18),
           },
         },
@@ -160,7 +168,11 @@ export class XeroOAuthService {
       metadata: { provider: 'xero', tenantName: tenant.tenantName },
     });
 
-    return connection!;
+    return {
+      connection: connection!,
+      orgId,
+      userId,
+    };
   }
 
   /**
@@ -200,8 +212,11 @@ export class XeroOAuthService {
       {
         $set: {
           'credentials.encryptedAccessToken': this.vault.encrypt(access_token),
-          'credentials.encryptedRefreshToken': this.vault.encrypt(newRefreshToken),
-          'credentials.tokenExpiresAt': new Date(Date.now() + expires_in * 1000),
+          'credentials.encryptedRefreshToken':
+            this.vault.encrypt(newRefreshToken),
+          'credentials.tokenExpiresAt': new Date(
+            Date.now() + expires_in * 1000,
+          ),
         },
       },
       { new: true },

@@ -15,7 +15,10 @@ import {
   AccountingConnection,
   AccountingConnectionSchema,
 } from '../integrations/schemas/accounting-connection.schema';
-import { SyncLog, SyncLogSchema } from '../integrations/schemas/sync-log.schema';
+import {
+  SyncLog,
+  SyncLogSchema,
+} from '../integrations/schemas/sync-log.schema';
 import { Invoice, InvoiceSchema } from '../integrations/schemas/invoice.schema';
 import { Contact, ContactSchema } from '../integrations/schemas/contact.schema';
 import { Payment, PaymentSchema } from '../integrations/schemas/payment.schema';

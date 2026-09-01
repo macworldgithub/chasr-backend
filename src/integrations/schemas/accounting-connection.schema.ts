@@ -3,11 +3,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
 export type ConnectionStatus =
-  | 'connected'
-  | 'syncing'
-  | 'error'
-  | 'disconnected'
-  | 'pending_auth';
+  'connected' | 'syncing' | 'error' | 'disconnected' | 'pending_auth';
 
 export type AuthMethod = 'oauth2' | 'api_key' | 'credential';
 
@@ -15,7 +11,12 @@ export type Provider = 'xero' | 'myob' | 'quickbooks' | 'csv';
 
 @Schema({ timestamps: true, collection: 'accountingconnections' })
 export class AccountingConnection extends Document {
-  @Prop({ type: Types.ObjectId, ref: 'Organisation', required: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'Organisation',
+    required: true,
+    index: true,
+  })
   orgId: Types.ObjectId;
 
   @Prop({ required: true, enum: ['xero', 'myob', 'quickbooks', 'csv'] })
@@ -31,10 +32,10 @@ export class AccountingConnection extends Document {
    */
   @Prop({
     type: {
-      encryptedAccessToken: String,    // AES-256-GCM ciphertext
-      encryptedRefreshToken: String,   // AES-256-GCM ciphertext
+      encryptedAccessToken: String, // AES-256-GCM ciphertext
+      encryptedRefreshToken: String, // AES-256-GCM ciphertext
       tokenExpiresAt: Date,
-      tenantId: String,                // Xero tenant/org ID
+      tenantId: String, // Xero tenant/org ID
       tenantName: String,
       scopes: [String],
       // API key auth (MYOB desktop etc.)
@@ -86,7 +87,8 @@ export class AccountingConnection extends Document {
   deletedAt: Date;
 }
 
-export const AccountingConnectionSchema = SchemaFactory.createForClass(AccountingConnection);
+export const AccountingConnectionSchema =
+  SchemaFactory.createForClass(AccountingConnection);
 
 // One active connection per org per provider
 AccountingConnectionSchema.index({ orgId: 1, provider: 1, isDeleted: 1 });
