@@ -6,6 +6,7 @@ import { VaultService } from '../../credential-vault/vault.service';
 import { DataMapperService } from '../../sync/data-mapper.service';
 import { XeroOAuthService } from './xero-oauth.service';
 import { AccountingConnection } from '../../integrations/schemas/accounting-connection.schema';
+import { withRateLimit } from './xero-rate-limiter';
 
 const PAGE_SIZE = 100;
 
@@ -27,6 +28,9 @@ export class XeroConnector extends BaseConnector {
     const xero = await this.buildAuthenticatedClient(connection);
     const tenantId = connection.credentials.tenantId as string;
     const result = this.emptyResult();
+
+    // Fetch and store Xero organisation info (name, currency, country, etc.)
+    await this.syncOrganisation(xero, tenantId, connection);
 
     await this.syncContacts(xero, tenantId, connection, result, null);
     await this.syncInvoices(xero, tenantId, connection, result, null);
@@ -65,7 +69,9 @@ export class XeroConnector extends BaseConnector {
 
     switch (resourceType) {
       case 'INVOICE': {
-        const resp = await xero.accountingApi.getInvoice(tenantId, resourceId);
+        const resp = await withRateLimit(() =>
+          xero.accountingApi.getInvoice(tenantId, resourceId),
+        );
         const invoice = resp.body.invoices?.[0];
         if (invoice) {
           await this.dataMapper.upsertInvoice(connection.orgId, 'xero', invoice);
@@ -74,7 +80,9 @@ export class XeroConnector extends BaseConnector {
         break;
       }
       case 'CONTACT': {
-        const resp = await xero.accountingApi.getContact(tenantId, resourceId);
+        const resp = await withRateLimit(() =>
+          xero.accountingApi.getContact(tenantId, resourceId),
+        );
         const contact = resp.body.contacts?.[0];
         if (contact) {
           await this.dataMapper.upsertContact(connection.orgId, 'xero', contact);
@@ -83,7 +91,9 @@ export class XeroConnector extends BaseConnector {
         break;
       }
       case 'PAYMENT': {
-        const resp = await xero.accountingApi.getPayment(tenantId, resourceId);
+        const resp = await withRateLimit(() =>
+          xero.accountingApi.getPayment(tenantId, resourceId),
+        );
         const payment = resp.body.payments?.[0];
         if (payment) {
           await this.dataMapper.upsertPayment(connection.orgId, 'xero', payment);
@@ -118,8 +128,10 @@ export class XeroConnector extends BaseConnector {
   async validateConnection(connection: AccountingConnection): Promise<boolean> {
     try {
       const xero = await this.buildAuthenticatedClient(connection);
-      await xero.accountingApi.getOrganisations(
-        connection.credentials.tenantId as string,
+      await withRateLimit(() =>
+        xero.accountingApi.getOrganisations(
+          connection.credentials.tenantId as string,
+        ),
       );
       return true;
     } catch {
@@ -141,11 +153,21 @@ export class XeroConnector extends BaseConnector {
       refreshed.credentials.encryptedAccessToken,
     );
 
+    // ⚠️ Scopes here MUST match what was requested during OAuth.
+    // The token was issued with all of these — a mismatch causes SDK validation issues.
     const xero = new XeroClient({
       clientId: process.env.XERO_CLIENT_ID!,
       clientSecret: process.env.XERO_CLIENT_SECRET!,
       redirectUris: [process.env.XERO_REDIRECT_URI!],
-      scopes: ['accounting.transactions.read', 'accounting.contacts.read'],
+      scopes: [
+        'openid',
+        'profile',
+        'email',
+        'accounting.transactions.read',
+        'accounting.contacts.read',
+        'accounting.settings.read',
+        'offline_access',
+      ],
     });
 
     // Inject token set directly — skips the OAuth dance
@@ -170,16 +192,18 @@ export class XeroConnector extends BaseConnector {
     const since = modifiedAfter ?? undefined;
 
     while (true) {
-      const resp = await xero.accountingApi.getContacts(
-        tenantId,
-        since,        // ifModifiedSince
-        undefined,    // where
-        undefined,    // order
-        undefined,    // ids
-        page,         // page
-        undefined,    // includeArchived
-        undefined,    // summaryOnly
-        undefined,    // searchTerm
+      const resp = await withRateLimit(() =>
+        xero.accountingApi.getContacts(
+          tenantId,
+          since,        // ifModifiedSince
+          undefined,    // where
+          undefined,    // order
+          undefined,    // ids
+          page,         // page
+          undefined,    // includeArchived
+          undefined,    // summaryOnly
+          undefined,    // searchTerm
+        ),
       );
 
       const contacts = resp.body.contacts ?? [];
@@ -216,19 +240,21 @@ export class XeroConnector extends BaseConnector {
     let page = 1;
 
     while (true) {
-      const resp = await xero.accountingApi.getInvoices(
-        tenantId,
-        since,        // ifModifiedSince
-        undefined,    // where (using statuses filter below)
-        undefined,    // order
-        undefined,    // ids
-        undefined,    // invoiceNumbers
-        undefined,    // contactIDs
-        ['AUTHORISED', 'PAID', 'VOIDED'] as any,
-        undefined,    // createdByMyApp
-        undefined,    // unitdp
-        undefined,    // summaryOnly
-        page,
+      const resp = await withRateLimit(() =>
+        xero.accountingApi.getInvoices(
+          tenantId,
+          since,        // ifModifiedSince
+          undefined,    // where
+          undefined,    // order
+          undefined,    // ids
+          undefined,    // invoiceNumbers
+          undefined,    // contactIDs
+          ['AUTHORISED', 'PAID', 'VOIDED'] as any,
+          undefined,    // createdByMyApp
+          undefined,    // unitdp
+          undefined,    // summaryOnly
+          page,
+        ),
       );
 
       const invoices = resp.body.invoices ?? [];
@@ -256,7 +282,7 @@ export class XeroConnector extends BaseConnector {
     }
   }
 
-  /** Sync payments, optionally filtered by modifiedAfter */
+  /** Sync payments, optionally filtered by modifiedAfter — paginated (100 per page) */
   private async syncPayments(
     xero: XeroClient,
     tenantId: string,
@@ -265,18 +291,61 @@ export class XeroConnector extends BaseConnector {
     modifiedAfter: Date | null,
   ): Promise<void> {
     const since = modifiedAfter ?? undefined;
+    let page = 1;
 
-    const resp = await xero.accountingApi.getPayments(tenantId, since);
-    const payments = resp.body.payments ?? [];
+    while (true) {
+      const resp = await withRateLimit(() =>
+        xero.accountingApi.getPayments(
+          tenantId,
+          since,      // ifModifiedSince
+          undefined,  // where
+          undefined,  // order
+          undefined,  // paymentIDs
+          page,       // page (100 per page)
+        ),
+      );
 
-    for (const payment of payments) {
-      try {
-        await this.dataMapper.upsertPayment(connection.orgId, 'xero', payment);
-        result.paymentsUpserted++;
-      } catch (err) {
-        result.errors.push(`Payment ${payment.paymentID}: ${err.message}`);
-        result.recordsFailed++;
+      const payments = resp.body.payments ?? [];
+      if (payments.length === 0) break;
+
+      for (const payment of payments) {
+        try {
+          await this.dataMapper.upsertPayment(connection.orgId, 'xero', payment);
+          result.paymentsUpserted++;
+        } catch (err) {
+          result.errors.push(`Payment ${payment.paymentID}: ${err.message}`);
+          result.recordsFailed++;
+        }
       }
+
+      // Xero returns max 100 per page; fewer means we're on the last page
+      if (payments.length < PAGE_SIZE) break;
+      page++;
+    }
+  }
+
+  /** Fetch and store the Xero organisation details for this connection */
+  private async syncOrganisation(
+    xero: XeroClient,
+    tenantId: string,
+    connection: AccountingConnection,
+  ): Promise<void> {
+    try {
+      const resp = await withRateLimit(() =>
+        xero.accountingApi.getOrganisations(tenantId),
+      );
+      const org = resp.body.organisations?.[0];
+      if (org) {
+        await this.dataMapper.upsertOrganisation(
+          connection._id as any,
+          connection.orgId,
+          org,
+        );
+        this.logger.log(`Synced Xero org: ${org.name} (${org.baseCurrency})`);
+      }
+    } catch (err) {
+      // Non-fatal: org info is display-only. Log and continue sync.
+      this.logger.warn(`Failed to sync Xero organisation info: ${err.message}`);
     }
   }
 

@@ -22,6 +22,10 @@ import {
 import { Invoice, InvoiceSchema } from '../integrations/schemas/invoice.schema';
 import { Contact, ContactSchema } from '../integrations/schemas/contact.schema';
 import { Payment, PaymentSchema } from '../integrations/schemas/payment.schema';
+import {
+  XeroOrganisation,
+  XeroOrganisationSchema,
+} from '../integrations/schemas/xero-organisation.schema';
 
 @Module({
   imports: [
@@ -44,6 +48,7 @@ import { Payment, PaymentSchema } from '../integrations/schemas/payment.schema';
       { name: Invoice.name, schema: InvoiceSchema },
       { name: Contact.name, schema: ContactSchema },
       { name: Payment.name, schema: PaymentSchema },
+      { name: XeroOrganisation.name, schema: XeroOrganisationSchema },
     ]),
     ConnectorsModule,
     AuditModule,
