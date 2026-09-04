@@ -1,5 +1,5 @@
 // src/integrations/integrations.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -178,6 +178,22 @@ export class IntegrationsService {
   ): Promise<AccountingConnection> {
     const normalizedOrgId = normalizeOrgId(orgId);
 
+    if (!credentials || Object.keys(credentials).length === 0) {
+      throw new BadRequestException('Credentials payload cannot be empty');
+    }
+
+    if (['xero', 'quickbooks', 'myob'].includes(provider) && authMethod === 'oauth2') {
+      const hasToken =
+        credentials.accessToken ||
+        credentials.encryptedAccessToken ||
+        credentials.encrypted_accessToken;
+      if (!hasToken) {
+        throw new BadRequestException(
+          `Missing required accessToken in credentials payload for provider '${provider}'`,
+        );
+      }
+    }
+
     // Normalize to the canonical encrypted key names used by the connectors.
     const encryptedCredentials: Record<string, string> = {};
     for (const [key, value] of Object.entries(credentials)) {
@@ -199,6 +215,32 @@ export class IntegrationsService {
       encryptedCredentials[canonicalKey] = this.vault.encrypt(value);
     }
 
+    // Validate credentials against provider API if applicable
+    if (provider !== 'csv') {
+      try {
+        const connector = this.connectorFactory.getConnector(provider);
+        const tempDoc = new this.connectionModel({
+          orgId: normalizedOrgId,
+          provider,
+          authMethod,
+          credentials: encryptedCredentials,
+        });
+        const isValid = await connector.validateConnection(tempDoc as any);
+        if (!isValid) {
+          throw new BadRequestException(
+            `Invalid credentials: authentication failed with ${provider}. Please verify your access token or reconnect.`,
+          );
+        }
+      } catch (err) {
+        if (err instanceof BadRequestException) {
+          throw err;
+        }
+        throw new BadRequestException(
+          `Invalid credentials: authentication failed with ${provider}. Please verify your access token or reconnect.`,
+        );
+      }
+    }
+
     const connection = await this.connectionModel.create({
       orgId: normalizedOrgId,
       provider: provider as any,
@@ -212,7 +254,7 @@ export class IntegrationsService {
       actor: userId,
       event: 'connection.created',
       outcome: 'success',
-      metadata: { provider, authMethod },
+      metadata: { provider, authMethod, status: 'connected' },
     });
 
     return connection;

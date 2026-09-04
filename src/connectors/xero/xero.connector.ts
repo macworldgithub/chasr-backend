@@ -174,11 +174,18 @@ export class XeroConnector extends BaseConnector {
     connection: AccountingConnection,
   ): Promise<XeroClient> {
     const refreshed = await this.refreshTokensIfNeeded(connection);
-    const accessToken = this.vault.decrypt(
-      refreshed.credentials.encryptedAccessToken ??
-        refreshed.credentials.encrypted_accessToken ??
-        refreshed.credentials.encrypted_access_token,
-    );
+    const rawEncryptedToken =
+      refreshed.credentials?.encryptedAccessToken ??
+      refreshed.credentials?.encrypted_accessToken ??
+      refreshed.credentials?.encrypted_access_token;
+
+    if (!rawEncryptedToken) {
+      throw new Error(
+        `Xero connection ${connection._id} is missing encryptedAccessToken in credentials bag`,
+      );
+    }
+
+    const accessToken = this.vault.decrypt(rawEncryptedToken);
 
     // ⚠️ Scopes here MUST match what was requested during OAuth.
     // The token was issued with all of these — a mismatch causes SDK validation issues.
@@ -186,15 +193,16 @@ export class XeroConnector extends BaseConnector {
       clientId: process.env.XERO_CLIENT_ID!,
       clientSecret: process.env.XERO_CLIENT_SECRET!,
       redirectUris: [process.env.XERO_REDIRECT_URI!],
-      scopes: [
-        'openid',
-        'profile',
-        'email',
-        'accounting.transactions.read',
-        'accounting.contacts.read',
-        'accounting.settings.read',
-        'offline_access',
-      ],
+   scopes: [
+  'openid',
+  'profile',
+  'email',
+  'accounting.invoices',
+  'accounting.payments',
+  'accounting.contacts',
+  'accounting.settings',
+  'offline_access',
+],
     });
 
     // Inject token set directly — skips the OAuth dance
@@ -308,6 +316,7 @@ export class XeroConnector extends BaseConnector {
           );
           result.invoicesUpserted++;
         } catch (err) {
+     
           result.errors.push(`Invoice ${invoice.invoiceID}: ${err.message}`);
           result.recordsFailed++;
         }

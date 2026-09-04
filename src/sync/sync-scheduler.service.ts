@@ -38,6 +38,7 @@ export class SyncSchedulerService {
             status: { $in: ['connected', 'error'] },
             isDeleted: false,
             provider: { $in: ['xero', 'myob'] }, // Only OAuth-based providers
+            'credentials.encryptedAccessToken': { $exists: true, $nin: [null, ''] },
           },
         },
         {

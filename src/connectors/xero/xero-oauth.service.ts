@@ -10,8 +10,10 @@ import { AuditLoggerService } from '../../audit/audit-logger.service';
 import { AccountingConnection } from '../../integrations/schemas/accounting-connection.schema';
 import { normalizeOrgId } from '../../shared/utils/org-id.util';
 
+// const XERO_SCOPES =
+//   'openid profile email accounting.transactions accounting.contacts accounting.settings offline_access';
 const XERO_SCOPES =
-  'openid profile email accounting.transactions.read accounting.contacts.read accounting.settings.read offline_access';
+  'openid profile email accounting.invoices accounting.payments accounting.contacts accounting.settings offline_access';
 
 const XERO_AUTH_URL = 'https://login.xero.com/identity/connect/authorize';
 const XERO_TOKEN_URL = 'https://identity.xero.com/connect/token';
