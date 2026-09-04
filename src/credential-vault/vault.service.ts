@@ -50,7 +50,11 @@ export class VaultService {
    * Decrypt a ciphertext string produced by `encrypt()`.
    * Throws if the authTag verification fails (tampered data).
    */
-  decrypt(ciphertext: string): string {
+  decrypt(ciphertext: string | undefined | null): string {
+    if (!ciphertext || typeof ciphertext !== 'string') {
+      throw new Error('Missing encrypted credential value');
+    }
+
     const parts = ciphertext.split(':');
     if (parts.length !== 3) {
       throw new Error(

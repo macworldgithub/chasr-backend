@@ -168,5 +168,44 @@ describe('DataMapperService', () => {
         { upsert: true, new: true },
       );
     });
+
+    it('should map and upsert a QuickBooks credit memo and evaluate chase', async () => {
+      const rawCreditMemo = {
+        Id: 'qb-cm-1',
+        DocNumber: 'CM-001',
+        TxnDate: '2026-02-10',
+        TotalAmt: 100,
+        RemainingCredit: 0,
+        CustomerRef: { value: 'qb-customer-1' },
+        Line: [
+          {
+            LinkedTxn: [{ TxnId: 'qb-inv-1', TxnType: 'Invoice' }],
+          },
+        ],
+      };
+
+      const mockLinkedInvoice = {
+        _id: new Types.ObjectId(),
+        orgId,
+        status: 'PAID',
+        balanceDue: 0,
+        dueDate: new Date('2026-02-01'),
+      };
+
+      mockInvoiceModel.findOne.mockResolvedValue(mockLinkedInvoice);
+
+      await service.upsertCreditMemo(orgId, 'quickbooks', rawCreditMemo);
+
+      expect(mockInvoiceModel.findOne).toHaveBeenCalledWith({
+        orgId,
+        externalId: 'qb-inv-1',
+        externalSource: 'quickbooks',
+      });
+      expect(mockChaseEngine.haltChase).toHaveBeenCalledWith(
+        mockLinkedInvoice._id,
+        'payment_received',
+      );
+    });
   });
 });
+

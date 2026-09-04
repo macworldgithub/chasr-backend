@@ -5,6 +5,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { XeroConnector } from './xero/xero.connector';
 import { XeroOAuthService } from './xero/xero-oauth.service';
 import { XeroWebhookHandler } from './xero/xero-webhook.handler';
+import { QuickBooksWebhookHandler } from './quickbooks/quickbooks-webhook.handler';
 import { MyobConnector } from './myob/myob.connector';
 import { MyobOAuthService } from './myob/myob-oauth.service';
 import { QuickBooksConnector } from './quickbooks/quickbooks.connector';
@@ -40,7 +41,7 @@ import {
     forwardRef(() => SyncModule), // DataMapperService is in SyncModule, which imports ConnectorsModule
     AuditModule,
   ],
-  controllers: [XeroWebhookHandler],
+  controllers: [XeroWebhookHandler, QuickBooksWebhookHandler],
   providers: [
     XeroConnector,
     XeroOAuthService,

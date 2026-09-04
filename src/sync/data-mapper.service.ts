@@ -51,6 +51,17 @@ interface NormalisedPayment {
   allocatedExternalInvoiceIds: string[];
 }
 
+interface NormalisedCreditMemo {
+  externalId: string;
+  docNumber: string;
+  date: Date;
+  total: number;
+  remainingCredit: number;
+  currency: string;
+  externalContactId: string | null;
+  allocatedExternalInvoiceIds: string[];
+}
+
 // ── DataMapperService ─────────────────────────────────────────────────────────
 
 /**
@@ -285,6 +296,21 @@ export class DataMapperService {
     }
   }
 
+  // ── Credit Memos ──────────────────────────────────────────────────────────
+
+  async upsertCreditMemo(
+    orgId: Types.ObjectId,
+    source: string,
+    raw: any,
+  ): Promise<void> {
+    const normalised = this.normaliseCreditMemo(source, raw);
+
+    // If credit memo links to specific invoices, reconcile them (adjust balance / halt chase)
+    if (normalised.allocatedExternalInvoiceIds.length > 0) {
+      await this.reconcileCreditMemoToInvoices(orgId, source, normalised);
+    }
+  }
+
   // ── Normalisation — Xero ──────────────────────────────────────────────────
 
   private normaliseContactXero(raw: any): NormalisedContact {
@@ -472,6 +498,24 @@ export class DataMapperService {
     };
   }
 
+  private normaliseCreditMemoQuickBooks(raw: any): NormalisedCreditMemo {
+    return {
+      externalId: raw.Id,
+      docNumber: raw.DocNumber ?? raw.Id,
+      date: raw.TxnDate ? new Date(raw.TxnDate) : new Date(),
+      total: raw.TotalAmt ?? 0,
+      remainingCredit: raw.RemainingCredit ?? 0,
+      currency: raw.CurrencyRef?.value ?? 'AUD',
+      externalContactId: raw.CustomerRef?.value ?? null,
+      allocatedExternalInvoiceIds:
+        raw.Line?.flatMap((line: any) =>
+          (line.LinkedTxn ?? [])
+            .filter((txn: any) => txn.TxnType === 'Invoice')
+            .map((txn: any) => txn.TxnId),
+        ).filter(Boolean) ?? [],
+    };
+  }
+
   // ── Normalisation — CSV ───────────────────────────────────────────────────
   // CSV rows are already normalised by CsvMapperService, passed through as-is.
 
@@ -517,6 +561,11 @@ export class DataMapperService {
     if (source === 'quickbooks') return this.normalisePaymentQuickBooks(raw);
     if (source === 'csv') return this.normalisePaymentCsv(raw);
     throw new Error(`Unknown source: ${source}`);
+  }
+
+  private normaliseCreditMemo(source: string, raw: any): NormalisedCreditMemo {
+    if (source === 'quickbooks') return this.normaliseCreditMemoQuickBooks(raw);
+    throw new Error(`Credit memo normalization not supported for source: ${source}`);
   }
 
   // ── Chase engine integration (most business-critical logic) ───────────────
@@ -570,6 +619,25 @@ export class DataMapperService {
       if (!invoice) continue;
 
       // Add payment to invoice's allocatedInvoiceIds and re-evaluate chase
+      await this.evaluateChaseEnrollment(invoice);
+    }
+  }
+
+  private async reconcileCreditMemoToInvoices(
+    orgId: Types.ObjectId,
+    source: string,
+    creditMemo: NormalisedCreditMemo,
+  ): Promise<void> {
+    for (const externalInvoiceId of creditMemo.allocatedExternalInvoiceIds) {
+      const invoice = await this.invoiceModel.findOne({
+        orgId,
+        externalId: externalInvoiceId,
+        externalSource: source,
+      });
+
+      if (!invoice) continue;
+
+      // Re-evaluate chase state (halt chase if balance reduced to 0 or paid)
       await this.evaluateChaseEnrollment(invoice);
     }
   }

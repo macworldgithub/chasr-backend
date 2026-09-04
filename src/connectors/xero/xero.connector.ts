@@ -76,7 +76,11 @@ export class XeroConnector extends BaseConnector {
         );
         const invoice = resp.body.invoices?.[0];
         if (invoice) {
-          await this.dataMapper.upsertInvoice(connection.orgId, 'xero', invoice);
+          await this.dataMapper.upsertInvoice(
+            connection.orgId,
+            'xero',
+            invoice,
+          );
           result.invoicesUpserted++;
         }
         break;
@@ -87,7 +91,11 @@ export class XeroConnector extends BaseConnector {
         );
         const contact = resp.body.contacts?.[0];
         if (contact) {
-          await this.dataMapper.upsertContact(connection.orgId, 'xero', contact);
+          await this.dataMapper.upsertContact(
+            connection.orgId,
+            'xero',
+            contact,
+          );
           result.contactsUpserted++;
         }
         break;
@@ -98,7 +106,11 @@ export class XeroConnector extends BaseConnector {
         );
         const payment = resp.body.payments?.[0];
         if (payment) {
-          await this.dataMapper.upsertPayment(connection.orgId, 'xero', payment);
+          await this.dataMapper.upsertPayment(
+            connection.orgId,
+            'xero',
+            payment,
+          );
           result.paymentsUpserted++;
         }
         break;
@@ -163,7 +175,9 @@ export class XeroConnector extends BaseConnector {
   ): Promise<XeroClient> {
     const refreshed = await this.refreshTokensIfNeeded(connection);
     const accessToken = this.vault.decrypt(
-      refreshed.credentials.encryptedAccessToken,
+      refreshed.credentials.encryptedAccessToken ??
+        refreshed.credentials.encrypted_accessToken ??
+        refreshed.credentials.encrypted_access_token,
     );
 
     // ⚠️ Scopes here MUST match what was requested during OAuth.
@@ -224,7 +238,11 @@ export class XeroConnector extends BaseConnector {
 
       for (const contact of contacts) {
         try {
-          await this.dataMapper.upsertContact(connection.orgId, 'xero', contact);
+          await this.dataMapper.upsertContact(
+            connection.orgId,
+            'xero',
+            contact,
+          );
           result.contactsUpserted++;
         } catch (err) {
           result.errors.push(`Contact ${contact.contactID}: ${err.message}`);
@@ -245,7 +263,8 @@ export class XeroConnector extends BaseConnector {
     result: SyncResult,
     modifiedAfter: Date | null,
   ): Promise<void> {
-    const lookbackMonths = (connection.settings?.lookbackMonths as number) ?? 18;
+    const lookbackMonths =
+      (connection.settings?.lookbackMonths as number) ?? 18;
     const lookbackDate = new Date();
     lookbackDate.setMonth(lookbackDate.getMonth() - lookbackMonths);
 
@@ -282,7 +301,11 @@ export class XeroConnector extends BaseConnector {
         }
 
         try {
-          await this.dataMapper.upsertInvoice(connection.orgId, 'xero', invoice);
+          await this.dataMapper.upsertInvoice(
+            connection.orgId,
+            'xero',
+            invoice,
+          );
           result.invoicesUpserted++;
         } catch (err) {
           result.errors.push(`Invoice ${invoice.invoiceID}: ${err.message}`);
