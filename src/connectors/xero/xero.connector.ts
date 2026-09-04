@@ -68,7 +68,11 @@ export class XeroConnector extends BaseConnector {
         const resp = await xero.accountingApi.getInvoice(tenantId, resourceId);
         const invoice = resp.body.invoices?.[0];
         if (invoice) {
-          await this.dataMapper.upsertInvoice(connection.orgId, 'xero', invoice);
+          await this.dataMapper.upsertInvoice(
+            connection.orgId,
+            'xero',
+            invoice,
+          );
           result.invoicesUpserted++;
         }
         break;
@@ -77,7 +81,11 @@ export class XeroConnector extends BaseConnector {
         const resp = await xero.accountingApi.getContact(tenantId, resourceId);
         const contact = resp.body.contacts?.[0];
         if (contact) {
-          await this.dataMapper.upsertContact(connection.orgId, 'xero', contact);
+          await this.dataMapper.upsertContact(
+            connection.orgId,
+            'xero',
+            contact,
+          );
           result.contactsUpserted++;
         }
         break;
@@ -86,7 +94,11 @@ export class XeroConnector extends BaseConnector {
         const resp = await xero.accountingApi.getPayment(tenantId, resourceId);
         const payment = resp.body.payments?.[0];
         if (payment) {
-          await this.dataMapper.upsertPayment(connection.orgId, 'xero', payment);
+          await this.dataMapper.upsertPayment(
+            connection.orgId,
+            'xero',
+            payment,
+          );
           result.paymentsUpserted++;
         }
         break;
@@ -138,7 +150,9 @@ export class XeroConnector extends BaseConnector {
   ): Promise<XeroClient> {
     const refreshed = await this.refreshTokensIfNeeded(connection);
     const accessToken = this.vault.decrypt(
-      refreshed.credentials.encryptedAccessToken,
+      refreshed.credentials.encryptedAccessToken ??
+        refreshed.credentials.encrypted_accessToken ??
+        refreshed.credentials.encrypted_access_token,
     );
 
     const xero = new XeroClient({
@@ -172,14 +186,14 @@ export class XeroConnector extends BaseConnector {
     while (true) {
       const resp = await xero.accountingApi.getContacts(
         tenantId,
-        since,        // ifModifiedSince
-        undefined,    // where
-        undefined,    // order
-        undefined,    // ids
-        page,         // page
-        undefined,    // includeArchived
-        undefined,    // summaryOnly
-        undefined,    // searchTerm
+        since, // ifModifiedSince
+        undefined, // where
+        undefined, // order
+        undefined, // ids
+        page, // page
+        undefined, // includeArchived
+        undefined, // summaryOnly
+        undefined, // searchTerm
       );
 
       const contacts = resp.body.contacts ?? [];
@@ -187,7 +201,11 @@ export class XeroConnector extends BaseConnector {
 
       for (const contact of contacts) {
         try {
-          await this.dataMapper.upsertContact(connection.orgId, 'xero', contact);
+          await this.dataMapper.upsertContact(
+            connection.orgId,
+            'xero',
+            contact,
+          );
           result.contactsUpserted++;
         } catch (err) {
           result.errors.push(`Contact ${contact.contactID}: ${err.message}`);
@@ -208,7 +226,8 @@ export class XeroConnector extends BaseConnector {
     result: SyncResult,
     modifiedAfter: Date | null,
   ): Promise<void> {
-    const lookbackMonths = (connection.settings?.lookbackMonths as number) ?? 18;
+    const lookbackMonths =
+      (connection.settings?.lookbackMonths as number) ?? 18;
     const lookbackDate = new Date();
     lookbackDate.setMonth(lookbackDate.getMonth() - lookbackMonths);
 
@@ -218,16 +237,16 @@ export class XeroConnector extends BaseConnector {
     while (true) {
       const resp = await xero.accountingApi.getInvoices(
         tenantId,
-        since,        // ifModifiedSince
-        undefined,    // where (using statuses filter below)
-        undefined,    // order
-        undefined,    // ids
-        undefined,    // invoiceNumbers
-        undefined,    // contactIDs
+        since, // ifModifiedSince
+        undefined, // where (using statuses filter below)
+        undefined, // order
+        undefined, // ids
+        undefined, // invoiceNumbers
+        undefined, // contactIDs
         ['AUTHORISED', 'PAID', 'VOIDED'] as any,
-        undefined,    // createdByMyApp
-        undefined,    // unitdp
-        undefined,    // summaryOnly
+        undefined, // createdByMyApp
+        undefined, // unitdp
+        undefined, // summaryOnly
         page,
       );
 
@@ -243,7 +262,11 @@ export class XeroConnector extends BaseConnector {
         }
 
         try {
-          await this.dataMapper.upsertInvoice(connection.orgId, 'xero', invoice);
+          await this.dataMapper.upsertInvoice(
+            connection.orgId,
+            'xero',
+            invoice,
+          );
           result.invoicesUpserted++;
         } catch (err) {
           result.errors.push(`Invoice ${invoice.invoiceID}: ${err.message}`);

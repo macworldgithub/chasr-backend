@@ -162,12 +162,25 @@ export class IntegrationsService {
   ): Promise<AccountingConnection> {
     const normalizedOrgId = normalizeOrgId(orgId);
 
-    // Encrypt all string values in the credentials object
+    // Normalize to the canonical encrypted key names used by the connectors.
     const encryptedCredentials: Record<string, string> = {};
     for (const [key, value] of Object.entries(credentials)) {
-      if (typeof value === 'string') {
-        encryptedCredentials[`encrypted_${key}`] = this.vault.encrypt(value);
-      }
+      if (typeof value !== 'string') continue;
+
+      const canonicalKey =
+        key === 'accessToken'
+          ? 'encryptedAccessToken'
+          : key === 'refreshToken'
+            ? 'encryptedRefreshToken'
+            : key === 'apiKey'
+              ? 'encryptedApiKey'
+              : key === 'apiSecret'
+                ? 'encryptedApiSecret'
+                : key.startsWith('encrypted')
+                  ? key
+                  : `encrypted_${key}`;
+
+      encryptedCredentials[canonicalKey] = this.vault.encrypt(value);
     }
 
     const connection = await this.connectionModel.create({

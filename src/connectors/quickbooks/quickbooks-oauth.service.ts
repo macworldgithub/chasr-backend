@@ -15,6 +15,17 @@ const QUICKBOOKS_REVOKE_URL =
   'https://developer.api.intuit.com/v2/oauth2/tokens/revoke';
 const QUICKBOOKS_AUTH_URL = 'https://appcenter.intuit.com/connect/oauth2';
 
+export function getQuickBooksApiBaseUrl(): string {
+  if (process.env.QUICKBOOKS_BASE_URL) {
+    return process.env.QUICKBOOKS_BASE_URL.replace(/\/+$/, '');
+  }
+  const env = (process.env.QUICKBOOKS_ENVIRONMENT || '').toLowerCase();
+  if (env === 'production' || env === 'prod') {
+    return 'https://quickbooks.api.intuit.com';
+  }
+  return 'https://sandbox-quickbooks.api.intuit.com';
+}
+
 @Injectable()
 export class QuickBooksOAuthService {
   private readonly logger = new Logger(QuickBooksOAuthService.name);
@@ -111,7 +122,7 @@ export class QuickBooksOAuthService {
     }
 
     const companyInfoResp = await axios.get(
-      `https://quickbooks.api.intuit.com/v3/company/${companyRealmId}/companyinfo/${companyRealmId}`,
+      `${getQuickBooksApiBaseUrl()}/v3/company/${companyRealmId}/companyinfo/${companyRealmId}`,
       {
         headers: {
           Authorization: `Bearer ${access_token}`,
@@ -120,10 +131,10 @@ export class QuickBooksOAuthService {
       },
     );
 
-    const companyName =
-      companyInfoResp.data?.CompanyInfo?.CompanyName ||
-      companyInfoResp.data?.companyInfo?.CompanyName ||
-      'QuickBooks Company';
+    const companyInfo = companyInfoResp.data?.CompanyInfo || companyInfoResp.data?.companyInfo;
+    const companyName = companyInfo?.CompanyName || 'QuickBooks Company';
+    const country = companyInfo?.Country || companyInfo?.LegalAddr?.Country || 'US';
+    const currency = companyInfo?.DefaultCurrency || 'USD';
 
     const normalizedOrgId = normalizeOrgId(orgId);
 

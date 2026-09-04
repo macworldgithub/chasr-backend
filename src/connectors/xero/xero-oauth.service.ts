@@ -186,7 +186,9 @@ export class XeroOAuthService {
     connection: AccountingConnection,
   ): Promise<AccountingConnection> {
     const refreshToken = this.vault.decrypt(
-      connection.credentials.encryptedRefreshToken,
+      connection.credentials.encryptedRefreshToken ??
+        connection.credentials.encrypted_refreshToken ??
+        connection.credentials.encrypted_refresh_token,
     );
 
     const resp = await axios.post(
@@ -235,7 +237,9 @@ export class XeroOAuthService {
   async revokeTokens(connection: AccountingConnection): Promise<void> {
     try {
       const refreshToken = this.vault.decrypt(
-        connection.credentials.encryptedRefreshToken,
+        connection.credentials.encryptedRefreshToken ??
+          connection.credentials.encrypted_refreshToken ??
+          connection.credentials.encrypted_refresh_token,
       );
       await axios.post(
         XERO_REVOKE_URL,
