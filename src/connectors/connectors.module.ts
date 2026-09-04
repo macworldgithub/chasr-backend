@@ -24,6 +24,10 @@ import {
   SyncLogSchema,
 } from '../integrations/schemas/sync-log.schema';
 import { Invoice, InvoiceSchema } from '../integrations/schemas/invoice.schema';
+import {
+  XeroOrganisation,
+  XeroOrganisationSchema,
+} from '../integrations/schemas/xero-organisation.schema';
 
 @Module({
   imports: [
@@ -31,6 +35,7 @@ import { Invoice, InvoiceSchema } from '../integrations/schemas/invoice.schema';
       { name: AccountingConnection.name, schema: AccountingConnectionSchema },
       { name: SyncLog.name, schema: SyncLogSchema },
       { name: Invoice.name, schema: InvoiceSchema }, // Needed for CSV connector
+      { name: XeroOrganisation.name, schema: XeroOrganisationSchema }, // Org info
     ]),
     BullModule.registerQueue({ name: 'accounting-sync' }),
     forwardRef(() => SyncModule), // DataMapperService is in SyncModule, which imports ConnectorsModule

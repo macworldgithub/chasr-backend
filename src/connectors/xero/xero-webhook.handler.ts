@@ -78,6 +78,7 @@ export class XeroWebhookHandler {
     };
 
     // Queue each event independently — O(n) jobs where n = events in batch
+    // Recognised resource types: INVOICE, CONTACT, PAYMENT, CREDITNOTE
     for (const event of body.events ?? []) {
       const connection = await this.connectionModel.findOne({
         'credentials.tenantId': event.tenantId,

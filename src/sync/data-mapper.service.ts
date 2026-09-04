@@ -5,6 +5,7 @@ import { Model, Types } from 'mongoose';
 import { Invoice } from '../integrations/schemas/invoice.schema';
 import { Contact } from '../integrations/schemas/contact.schema';
 import { Payment } from '../integrations/schemas/payment.schema';
+import { XeroOrganisation } from '../integrations/schemas/xero-organisation.schema';
 import { ChaseEngineService } from './chase-engine.service';
 
 // ── Normalised intermediate types ─────────────────────────────────────────────
@@ -80,6 +81,8 @@ export class DataMapperService {
     @InjectModel(Invoice.name) private readonly invoiceModel: Model<Invoice>,
     @InjectModel(Contact.name) private readonly contactModel: Model<Contact>,
     @InjectModel(Payment.name) private readonly paymentModel: Model<Payment>,
+    @InjectModel(XeroOrganisation.name)
+    private readonly xeroOrgModel: Model<XeroOrganisation>,
     private readonly chaseEngine: ChaseEngineService,
   ) {}
 
@@ -168,6 +171,41 @@ export class DataMapperService {
     }
   }
 
+  // ── Organisation ──────────────────────────────────────────────────────────
+
+  /**
+   * Upsert the Xero organisation details for a connection.
+   * Called once on fullSync — keeps org name, currency, country up to date.
+   */
+  async upsertOrganisation(
+    connectionId: Types.ObjectId,
+    orgId: Types.ObjectId,
+    raw: any,
+  ): Promise<void> {
+    // Xero returns organisation fields at top level of each org object
+    await this.xeroOrgModel.findOneAndUpdate(
+      { connectionId },
+      {
+        $set: {
+          orgId,
+          connectionId,
+          name: raw.name,
+          legalName: raw.legalName,
+          taxNumber: raw.taxNumber,
+          baseCurrency: raw.baseCurrency,
+          countryCode: raw.countryCode,
+          timezone: raw.timezone,
+          shortCode: raw.shortCode,
+          xeroOrgId: raw.organisationID,
+          organisationType: raw.organisationType,
+          financialYearEndMonth: raw.financialYearEndMonth,
+          lastSyncedAt: new Date(),
+        },
+      },
+      { upsert: true, new: true },
+    );
+  }
+
   // ── Payments ──────────────────────────────────────────────────────────────
 
   async upsertPayment(
@@ -254,7 +292,9 @@ export class DataMapperService {
       currency: raw.currencyCode ?? 'AUD',
       status: raw.status, // DRAFT|AUTHORISED|PAID|VOIDED
       externalContactId: raw.contact?.contactID ?? null,
-      pdfUrl: raw.url ?? null,
+      // onlineInvoiceUrl is the shareable link (e.g. https://go.xero.com/...)
+      // Fall back to raw.url for older Xero editions that don't return onlineInvoiceUrl
+      pdfUrl: raw.onlineInvoiceUrl ?? raw.url ?? null,
     };
   }
 
