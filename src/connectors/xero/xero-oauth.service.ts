@@ -22,6 +22,7 @@ export interface XeroOAuthExchangeResult {
   connection: AccountingConnection;
   orgId: string;
   userId: string;
+  tenants: Array<{ tenantId: string; tenantName: string }>;
 }
 
 @Injectable()
@@ -129,7 +130,8 @@ export class XeroOAuthService {
       );
     }
 
-    const tenant = tenantsResp.data[0];
+    const tenants = tenantsResp.data;
+    const tenant = tenants[0];
 
     const normalizedOrgId = normalizeOrgId(orgId);
 
@@ -175,7 +177,59 @@ export class XeroOAuthService {
       connection: connection!,
       orgId,
       userId,
+      tenants,
     };
+  }
+
+  async getTenants(connectionId: string): Promise<Array<{ tenantId: string; tenantName: string }>> {
+    const connection = await this.connectionModel.findById(connectionId);
+    if (!connection || connection.provider !== 'xero') {
+      throw new BadRequestException('Invalid Xero connection');
+    }
+    const accessToken = this.vault.decrypt(
+      connection.credentials.encryptedAccessToken,
+    );
+    const tenantsResp = await axios.get<
+      Array<{ tenantId: string; tenantName: string }>
+    >(XERO_CONNECTIONS_URL, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return tenantsResp.data;
+  }
+
+  async selectTenant(
+    connectionId: string,
+    tenantId: string,
+  ): Promise<AccountingConnection> {
+    const connection = await this.connectionModel.findById(connectionId);
+    if (!connection || connection.provider !== 'xero') {
+      throw new BadRequestException('Invalid Xero connection');
+    }
+
+    const accessToken = this.vault.decrypt(
+      connection.credentials.encryptedAccessToken,
+    );
+    const tenantsResp = await axios.get<
+      Array<{ tenantId: string; tenantName: string }>
+    >(XERO_CONNECTIONS_URL, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    const tenant = tenantsResp.data.find((t) => t.tenantId === tenantId);
+    if (!tenant) {
+      throw new BadRequestException('Tenant not found in connected Xero account.');
+    }
+
+    return this.connectionModel.findByIdAndUpdate(
+      connectionId,
+      {
+        $set: {
+          'credentials.tenantId': tenant.tenantId,
+          'credentials.tenantName': tenant.tenantName,
+        },
+      },
+      { new: true },
+    ).exec() as Promise<AccountingConnection>;
   }
 
   /**

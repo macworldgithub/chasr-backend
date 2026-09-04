@@ -28,6 +28,9 @@ interface NormalisedContact {
 interface NormalisedInvoice {
   externalId: string;
   invoiceNumber: string;
+  invoiceType: 'ACCREC' | 'ACCPAY';
+  creditNoteNumber?: string;
+  linkedInvoiceIds?: string[];
   issueDate?: Date;
   dueDate: Date;
   total: number;
@@ -75,9 +78,9 @@ export class DataMapperService {
     private readonly chaseEngine: ChaseEngineService,
   ) {}
 
-  // ── Contacts ──────────────────────────────────────────────────────────────
+  // ── Contacts ──────────────────────────────────────
 
-  async upsertContact(
+  async upsertContact( 
     orgId: Types.ObjectId,
     source: string,
     raw: any,
@@ -108,7 +111,7 @@ export class DataMapperService {
     );
   }
 
-  // ── Invoices ──────────────────────────────────────────────────────────────
+  // ── Invoices ────────────────────────────────────────
 
   async upsertInvoice(
     orgId: Types.ObjectId,
@@ -132,6 +135,9 @@ export class DataMapperService {
         $set: {
           // Financial fields — accounting system is source of truth
           invoiceNumber: normalised.invoiceNumber,
+          invoiceType: normalised.invoiceType,
+          creditNoteNumber: normalised.creditNoteNumber,
+          linkedInvoiceIds: normalised.linkedInvoiceIds,
           issueDate: normalised.issueDate,
           dueDate: normalised.dueDate,
           total: normalised.total,
@@ -155,6 +161,55 @@ export class DataMapperService {
     );
 
     // After upsert: evaluate chase enrollment (most business-critical behaviour)
+    if (updated) {
+      await this.evaluateChaseEnrollment(updated);
+    }
+  }
+
+  async upsertCreditNote(
+    orgId: Types.ObjectId,
+    source: string,
+    raw: any,
+  ): Promise<void> {
+    const normalised = this.normaliseCreditNote(source, raw);
+
+    // Resolve Chasr-internal contactId from the external contact ID
+    const contact = normalised.externalContactId
+      ? await this.contactModel.findOne({
+          orgId,
+          externalId: normalised.externalContactId,
+          externalSource: source,
+        })
+      : null;
+
+    const updated = await this.invoiceModel.findOneAndUpdate(
+      { orgId, externalId: normalised.externalId, externalSource: source },
+      {
+        $set: {
+          invoiceNumber: normalised.invoiceNumber,
+          invoiceType: normalised.invoiceType,
+          creditNoteNumber: normalised.creditNoteNumber,
+          linkedInvoiceIds: normalised.linkedInvoiceIds,
+          issueDate: normalised.issueDate,
+          dueDate: normalised.dueDate,
+          total: normalised.total,
+          balanceDue: normalised.balanceDue,
+          currency: normalised.currency,
+          status: normalised.status,
+          contactId: contact?._id ?? null,
+          pdfUrl: normalised.pdfUrl,
+          lastSyncedAt: new Date(),
+        },
+        $setOnInsert: {
+          orgId,
+          externalId: normalised.externalId,
+          externalSource: source,
+          chaseState: 'pending',
+        },
+      },
+      { upsert: true, new: true },
+    );
+
     if (updated) {
       await this.evaluateChaseEnrollment(updated);
     }
@@ -259,6 +314,7 @@ export class DataMapperService {
     return {
       externalId: raw.invoiceID,
       invoiceNumber: raw.invoiceNumber,
+      invoiceType: raw.type === 'ACCPAY' ? 'ACCPAY' : 'ACCREC',
       issueDate: raw.date ? new Date(raw.date) : undefined,
       dueDate: new Date(raw.dueDate),
       total: raw.total ?? 0,
@@ -269,6 +325,24 @@ export class DataMapperService {
       // onlineInvoiceUrl is the shareable link (e.g. https://go.xero.com/...)
       // Fall back to raw.url for older Xero editions that don't return onlineInvoiceUrl
       pdfUrl: raw.onlineInvoiceUrl ?? raw.url ?? null,
+    };
+  }
+
+  private normaliseCreditNoteXero(raw: any): NormalisedInvoice {
+    return {
+      externalId: raw.creditNoteID,
+      invoiceNumber: raw.creditNoteNumber, // Treat credit note number as invoice number for unified storage
+      invoiceType: raw.type === 'ACCPAYCREDIT' ? 'ACCPAY' : 'ACCREC',
+      creditNoteNumber: raw.creditNoteNumber,
+      linkedInvoiceIds: raw.allocations?.map((a: any) => a.invoice?.invoiceID).filter(Boolean) ?? [],
+      issueDate: raw.date ? new Date(raw.date) : undefined,
+      dueDate: raw.date ? new Date(raw.date) : new Date(), // Credit notes don't have a due date in the same way, fallback to date
+      total: raw.total ?? 0,
+      balanceDue: raw.remainingCredit ?? 0,
+      currency: raw.currencyCode ?? 'AUD',
+      status: raw.status,
+      externalContactId: raw.contact?.contactID ?? null,
+      pdfUrl: null, // Xero doesn't provide an online url for credit notes in the same way typically
     };
   }
 
@@ -316,6 +390,7 @@ export class DataMapperService {
     return {
       externalId: raw.UID,
       invoiceNumber: raw.Number,
+      invoiceType: 'ACCREC',
       issueDate: this.parseMYOBDate(raw.Date) ?? undefined,
       dueDate: this.parseMYOBDate(raw.TermsPaymentIsDueDate) ?? new Date(),
       total: raw.TotalAmount ?? 0,
@@ -370,6 +445,7 @@ export class DataMapperService {
     return {
       externalId: raw.Id,
       invoiceNumber: raw.DocNumber ?? raw.Id,
+      invoiceType: 'ACCREC',
       issueDate: raw.TxnDate ? new Date(raw.TxnDate) : undefined,
       dueDate: raw.DueDate ? new Date(raw.DueDate) : new Date(),
       total: raw.TotalAmt ?? 0,
@@ -427,6 +503,12 @@ export class DataMapperService {
     if (source === 'quickbooks') return this.normaliseInvoiceQuickBooks(raw);
     if (source === 'csv') return this.normaliseInvoiceCsv(raw);
     throw new Error(`Unknown source: ${source}`);
+  }
+
+  private normaliseCreditNote(source: string, raw: any): NormalisedInvoice {
+    if (source === 'xero') return this.normaliseCreditNoteXero(raw);
+    // Other sources fallback to invoice mapping for MVP, or just error
+    throw new Error(`Credit notes for source ${source} not implemented`);
   }
 
   private normalisePayment(source: string, raw: any): NormalisedPayment {

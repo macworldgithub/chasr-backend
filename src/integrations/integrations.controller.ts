@@ -114,14 +114,51 @@ export class IntegrationsController {
     @Query('state') state: string,
   ) {
     if (!code || !state) throw new BadRequestException('Missing code or state');
-    const { connection } = await this.xeroOAuth.exchangeCode(code, state);
+    const { connection, tenants } = await this.xeroOAuth.exchangeCode(code, state);
+    
+    if (tenants.length > 1) {
+      // Defer sync, return tenants for the user to pick
+      return { success: true, connectionId: connection._id, tenants, requiresTenantSelection: true };
+    }
+
     // Trigger initial sync automatically
     await this.orchestrator.dispatchFullSync(
       connection._id.toString(),
       req.orgId,
       req.user.id,
     );
-    return { success: true, connectionId: connection._id };
+    return { success: true, connectionId: connection._id, tenants };
+  }
+
+  @Get('connections/xero/:id/tenants')
+  @ApiOperation({ summary: 'List available Xero tenants for a connection' })
+  async getXeroTenants(@Param('id') connectionId: string) {
+    return this.xeroOAuth.getTenants(connectionId);
+  }
+
+  @Post('connections/xero/:id/select-tenant')
+  @ApiOperation({ summary: 'Switch active Xero tenant and trigger sync' })
+  async selectXeroTenant(
+    @Req() req: any,
+    @Param('id') connectionId: string,
+    @Body('tenantId') tenantId: string,
+  ) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    await this.xeroOAuth.selectTenant(connectionId, tenantId);
+    
+    // Now trigger sync
+    await this.orchestrator.dispatchFullSync(
+      connectionId,
+      req.orgId,
+      req.user.id,
+    );
+    return { success: true };
+  }
+
+  @Get('connections/:id/organisation')
+  @ApiOperation({ summary: 'Get synced organisation info for a connection' })
+  async getOrganisationInfo(@Req() req: any, @Param('id') connectionId: string) {
+    return this.integrationsService.getOrganisation(req.orgId, connectionId);
   }
 
   @Post('connections/myob/auth-url')

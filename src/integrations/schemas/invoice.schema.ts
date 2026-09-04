@@ -29,6 +29,15 @@ export class Invoice extends Document {
   @Prop({ required: true })
   invoiceNumber: string;
 
+  @Prop({ enum: ['ACCREC', 'ACCPAY'], default: 'ACCREC' })
+  invoiceType: 'ACCREC' | 'ACCPAY';
+
+  @Prop()
+  creditNoteNumber: string;
+
+  @Prop({ type: [String], default: [] })
+  linkedInvoiceIds: string[];
+
   @Prop()
   issueDate: Date;
 

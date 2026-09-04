@@ -14,6 +14,10 @@ import {
   AccountingConnectionSchema,
 } from './schemas/accounting-connection.schema';
 import { SyncLog, SyncLogSchema } from './schemas/sync-log.schema';
+import {
+  XeroOrganisation,
+  XeroOrganisationSchema,
+} from './schemas/xero-organisation.schema';
 
 @Module({
   imports: [
@@ -40,6 +44,7 @@ import { SyncLog, SyncLogSchema } from './schemas/sync-log.schema';
     MongooseModule.forFeature([
       { name: AccountingConnection.name, schema: AccountingConnectionSchema },
       { name: SyncLog.name, schema: SyncLogSchema },
+      { name: XeroOrganisation.name, schema: XeroOrganisationSchema },
     ]),
     SyncModule,
     ConnectorsModule,

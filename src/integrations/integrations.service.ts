@@ -7,6 +7,7 @@ import {
   Provider,
 } from './schemas/accounting-connection.schema';
 import { SyncLog } from './schemas/sync-log.schema';
+import { XeroOrganisation } from './schemas/xero-organisation.schema';
 import { SyncOrchestratorService } from '../sync/sync-orchestrator.service';
 import { ConnectorFactory } from '../connectors/connector.factory';
 import { VaultService } from '../credential-vault/vault.service';
@@ -20,6 +21,8 @@ export class IntegrationsService {
     private readonly connectionModel: Model<AccountingConnection>,
     @InjectModel(SyncLog.name)
     private readonly syncLogModel: Model<SyncLog>,
+    @InjectModel(XeroOrganisation.name)
+    private readonly xeroOrgModel: Model<XeroOrganisation>,
     private readonly orchestrator: SyncOrchestratorService,
     private readonly connectorFactory: ConnectorFactory,
     private readonly vault: VaultService,
@@ -139,6 +142,19 @@ export class IntegrationsService {
       .exec();
     if (!log) throw new NotFoundException('Sync log not found');
     return log;
+  }
+
+  async getOrganisation(orgId: string, connectionId: string): Promise<XeroOrganisation> {
+    const normalizedOrgId = normalizeOrgId(orgId);
+    const org = await this.xeroOrgModel.findOne({
+      connectionId: new Types.ObjectId(connectionId),
+      orgId: normalizedOrgId,
+    }).exec();
+
+    if (!org) {
+      throw new NotFoundException('Organisation info not found');
+    }
+    return org;
   }
 
   async triggerManualSync(

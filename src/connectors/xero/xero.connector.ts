@@ -34,6 +34,7 @@ export class XeroConnector extends BaseConnector {
 
     await this.syncContacts(xero, tenantId, connection, result, null);
     await this.syncInvoices(xero, tenantId, connection, result, null);
+    await this.syncCreditNotes(xero, tenantId, connection, result, null);
     await this.syncPayments(xero, tenantId, connection, result, null);
 
     return result;
@@ -49,6 +50,7 @@ export class XeroConnector extends BaseConnector {
 
     await this.syncContacts(xero, tenantId, connection, result, since);
     await this.syncInvoices(xero, tenantId, connection, result, since);
+    await this.syncCreditNotes(xero, tenantId, connection, result, since);
     await this.syncPayments(xero, tenantId, connection, result, since);
 
     return result;
@@ -98,6 +100,17 @@ export class XeroConnector extends BaseConnector {
         if (payment) {
           await this.dataMapper.upsertPayment(connection.orgId, 'xero', payment);
           result.paymentsUpserted++;
+        }
+        break;
+      }
+      case 'CREDITNOTE': {
+        const resp = await withRateLimit(() =>
+          xero.accountingApi.getCreditNote(tenantId, resourceId),
+        );
+        const creditNote = resp.body.creditNotes?.[0];
+        if (creditNote) {
+          await this.dataMapper.upsertCreditNote(connection.orgId, 'xero', creditNote);
+          result.invoicesUpserted++;
         }
         break;
       }
@@ -278,6 +291,46 @@ export class XeroConnector extends BaseConnector {
       }
 
       if (invoices.length < PAGE_SIZE) break;
+      page++;
+    }
+  }
+
+  /** Sync credit notes, optionally filtered by modifiedAfter */
+  private async syncCreditNotes(
+    xero: XeroClient,
+    tenantId: string,
+    connection: AccountingConnection,
+    result: SyncResult,
+    modifiedAfter: Date | null,
+  ): Promise<void> {
+    const since = modifiedAfter ?? undefined;
+    let page = 1;
+
+    while (true) {
+      const resp = await withRateLimit(() =>
+        xero.accountingApi.getCreditNotes(
+          tenantId,
+          since,      // ifModifiedSince
+          undefined,  // where
+          undefined,  // order
+          page,       // page
+        ),
+      );
+
+      const creditNotes = resp.body.creditNotes ?? [];
+      if (creditNotes.length === 0) break;
+
+      for (const creditNote of creditNotes) {
+        try {
+          await this.dataMapper.upsertCreditNote(connection.orgId, 'xero', creditNote);
+          result.invoicesUpserted++;
+        } catch (err) {
+          result.errors.push(`CreditNote ${creditNote.creditNoteID}: ${err.message}`);
+          result.recordsFailed++;
+        }
+      }
+
+      if (creditNotes.length < PAGE_SIZE) break;
       page++;
     }
   }
