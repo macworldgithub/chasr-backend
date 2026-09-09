@@ -7,12 +7,15 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   Req,
   UploadedFile,
   UseInterceptors,
   BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
@@ -42,6 +45,8 @@ import type { Provider } from './schemas/accounting-connection.schema';
 @ApiBearerAuth()
 @UseGuards(OrgScopeGuard)
 export class IntegrationsController {
+  private readonly frontendUrl: string;
+
   constructor(
     private readonly integrationsService: IntegrationsService,
     private readonly xeroOAuth: XeroOAuthService,
@@ -49,7 +54,11 @@ export class IntegrationsController {
     private readonly quickBooksOAuth: QuickBooksOAuthService,
     private readonly csvConnector: CsvConnector,
     private readonly orchestrator: SyncOrchestratorService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+  }
 
   // ── Connection Management ───────────────────────────────────────────────────
 
@@ -114,28 +123,38 @@ export class IntegrationsController {
   async handleXeroCallback(
     @Query('code') code: string,
     @Query('state') state: string,
+    @Res() res: Response,
   ) {
-    if (!code || !state) throw new BadRequestException('Missing code or state');
-    const { connection, tenants, orgId, userId } =
-      await this.xeroOAuth.exchangeCode(code, state);
+    try {
+      if (!code || !state) {
+        return res.redirect(
+          `${this.frontendUrl}/integrations/callback?status=error&provider=xero&message=${encodeURIComponent('Missing code or state')}`,
+        );
+      }
+      const { connection, tenants, orgId, userId } =
+        await this.xeroOAuth.exchangeCode(code, state);
 
-    if (tenants.length > 1) {
-      // Defer sync, return tenants for the user to pick
-      return {
-        success: true,
-        connectionId: connection._id,
-        tenants,
-        requiresTenantSelection: true,
-      };
+      if (tenants.length > 1) {
+        // Defer sync, redirect with tenant-selection flag
+        return res.redirect(
+          `${this.frontendUrl}/integrations/callback?status=success&provider=xero&connectionId=${connection._id}&requiresTenantSelection=true`,
+        );
+      }
+
+      // Trigger initial sync automatically
+      await this.orchestrator.dispatchFullSync(
+        connection._id.toString(),
+        orgId,
+        userId,
+      );
+      return res.redirect(
+        `${this.frontendUrl}/integrations/callback?status=success&provider=xero&connectionId=${connection._id}`,
+      );
+    } catch (error) {
+      return res.redirect(
+        `${this.frontendUrl}/integrations/callback?status=error&provider=xero&message=${encodeURIComponent(error.message || 'OAuth failed')}`,
+      );
     }
-
-    // Trigger initial sync automatically
-    await this.orchestrator.dispatchFullSync(
-      connection._id.toString(),
-      orgId,
-      userId,
-    );
-    return { success: true, connectionId: connection._id, tenants };
   }
 
   @Get('connections/xero/:id/tenants')
@@ -180,8 +199,23 @@ export class IntegrationsController {
   async handleMyobCallback(
     @Query('code') code: string,
     @Query('state') state: string,
+    @Res() res: Response,
   ) {
-    return this.myobOAuth.exchangeCode(code, state);
+    try {
+      if (!code || !state) {
+        return res.redirect(
+          `${this.frontendUrl}/integrations/callback?status=error&provider=myob&message=${encodeURIComponent('Missing code or state')}`,
+        );
+      }
+      const connection = await this.myobOAuth.exchangeCode(code, state);
+      return res.redirect(
+        `${this.frontendUrl}/integrations/callback?status=success&provider=myob&connectionId=${connection._id}`,
+      );
+    } catch (error) {
+      return res.redirect(
+        `${this.frontendUrl}/integrations/callback?status=error&provider=myob&message=${encodeURIComponent(error.message || 'OAuth failed')}`,
+      );
+    }
   }
 
   @Post('connections/quickbooks/auth-url')
@@ -194,20 +228,33 @@ export class IntegrationsController {
   async handleQuickBooksCallback(
     @Query('code') code: string,
     @Query('state') state: string,
-    @Query('realmId') realmId?: string,
+    @Query('realmId') realmId: string,
+    @Res() res: Response,
   ) {
-    if (!code || !state) throw new BadRequestException('Missing code or state');
-    const connection = await this.quickBooksOAuth.exchangeCode(
-      code,
-      state,
-      realmId,
-    );
-    await this.orchestrator.dispatchFullSync(
-      connection._id.toString(),
-      connection.orgId.toString(),
-      'system:oauth',
-    );
-    return { success: true, connectionId: connection._id };
+    try {
+      if (!code || !state) {
+        return res.redirect(
+          `${this.frontendUrl}/integrations/callback?status=error&provider=quickbooks&message=${encodeURIComponent('Missing code or state')}`,
+        );
+      }
+      const connection = await this.quickBooksOAuth.exchangeCode(
+        code,
+        state,
+        realmId,
+      );
+      await this.orchestrator.dispatchFullSync(
+        connection._id.toString(),
+        connection.orgId.toString(),
+        'system:oauth',
+      );
+      return res.redirect(
+        `${this.frontendUrl}/integrations/callback?status=success&provider=quickbooks&connectionId=${connection._id}`,
+      );
+    } catch (error) {
+      return res.redirect(
+        `${this.frontendUrl}/integrations/callback?status=error&provider=quickbooks&message=${encodeURIComponent(error.message || 'OAuth failed')}`,
+      );
+    }
   }
 
   // ── Sync Operations ─────────────────────────────────────────────────────────
