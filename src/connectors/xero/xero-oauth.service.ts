@@ -241,50 +241,88 @@ export class XeroOAuthService {
   async refreshAccessToken(
     connection: AccountingConnection,
   ): Promise<AccountingConnection> {
-    const refreshToken = this.vault.decrypt(
-      connection.credentials.encryptedRefreshToken ??
-        connection.credentials.encrypted_refreshToken ??
-        connection.credentials.encrypted_refresh_token,
-    );
+    const rawRefreshToken =
+      connection.credentials?.encryptedRefreshToken ??
+      connection.credentials?.encrypted_refreshToken ??
+      connection.credentials?.encrypted_refresh_token;
 
-    const resp = await axios.post(
-      XERO_TOKEN_URL,
-      new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-        client_id: process.env.XERO_CLIENT_ID!,
-        client_secret: process.env.XERO_CLIENT_SECRET!,
-      }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
-    );
-
-    const {
-      access_token,
-      refresh_token: newRefreshToken,
-      expires_in,
-    } = resp.data as {
-      access_token: string;
-      refresh_token: string;
-      expires_in: number;
-    };
-
-    const updated = await this.connectionModel.findByIdAndUpdate(
-      connection._id,
-      {
+    if (!rawRefreshToken) {
+      await this.connectionModel.findByIdAndUpdate(connection._id, {
         $set: {
-          'credentials.encryptedAccessToken': this.vault.encrypt(access_token),
-          'credentials.encryptedRefreshToken':
-            this.vault.encrypt(newRefreshToken),
-          'credentials.tokenExpiresAt': new Date(
-            Date.now() + expires_in * 1000,
-          ),
+          status: 'error',
+          lastSyncError:
+            'Xero connection requires re-authentication (refresh token missing).',
         },
-      },
-      { new: true },
-    );
+      });
+      throw new Error(
+        `Xero connection ${connection._id} has no refresh token in credentials bag`,
+      );
+    }
 
-    this.logger.log(`Refreshed Xero token for connection ${connection._id}`);
-    return updated!;
+    const refreshToken = this.vault.decrypt(rawRefreshToken);
+
+    try {
+      const resp = await axios.post(
+        XERO_TOKEN_URL,
+        new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+          client_id: process.env.XERO_CLIENT_ID!,
+          client_secret: process.env.XERO_CLIENT_SECRET!,
+        }),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+      );
+
+      const {
+        access_token,
+        refresh_token: newRefreshToken,
+        expires_in,
+      } = resp.data as {
+        access_token: string;
+        refresh_token: string;
+        expires_in: number;
+      };
+
+      const updated = await this.connectionModel.findByIdAndUpdate(
+        connection._id,
+        {
+          $set: {
+            'credentials.encryptedAccessToken': this.vault.encrypt(access_token),
+            'credentials.encryptedRefreshToken':
+              this.vault.encrypt(newRefreshToken),
+            'credentials.tokenExpiresAt': new Date(
+              Date.now() + expires_in * 1000,
+            ),
+          },
+        },
+        { new: true },
+      );
+
+      this.logger.log(`Refreshed Xero token for connection ${connection._id}`);
+      return updated!;
+    } catch (err: any) {
+      const errorMsg =
+        err.response?.data?.error_description ||
+        err.response?.data?.error ||
+        err.message;
+      this.logger.error(
+        `Failed to refresh Xero token for connection ${connection._id}: ${errorMsg}`,
+      );
+
+      if (err.response?.status === 400 || err.response?.status === 401) {
+        await this.connectionModel.findByIdAndUpdate(connection._id, {
+          $set: {
+            status: 'error',
+            lastSyncError:
+              'Xero authorization expired or revoked. Please reconnect your Xero account.',
+          },
+        });
+      }
+
+      throw new Error(
+        `Xero token refresh failed (${errorMsg}). User may need to re-authenticate.`,
+      );
+    }
   }
 
   /**

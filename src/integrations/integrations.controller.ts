@@ -30,6 +30,7 @@ import { QuickBooksOAuthService } from '../connectors/quickbooks/quickbooks-oaut
 import { CsvConnector } from '../connectors/csv/csv.connector';
 import { SyncOrchestratorService } from '../sync/sync-orchestrator.service';
 import { OrgScopeGuard } from '../shared/guards/org-scope.guard';
+import { Public } from '../shared/decorators/public.decorator';
 import {
   CsvCommitDto,
   CreateCredentialConnectionDto,
@@ -107,25 +108,32 @@ export class IntegrationsController {
     return this.xeroOAuth.generateAuthUrl(req.orgId, req.user.id);
   }
 
+  @Public()
   @Get('connections/xero/callback')
+  @ApiOperation({ summary: 'Handle Xero OAuth callback redirection' })
   async handleXeroCallback(
-    @Req() req: any,
     @Query('code') code: string,
     @Query('state') state: string,
   ) {
     if (!code || !state) throw new BadRequestException('Missing code or state');
-    const { connection, tenants } = await this.xeroOAuth.exchangeCode(code, state);
-    
+    const { connection, tenants, orgId, userId } =
+      await this.xeroOAuth.exchangeCode(code, state);
+
     if (tenants.length > 1) {
       // Defer sync, return tenants for the user to pick
-      return { success: true, connectionId: connection._id, tenants, requiresTenantSelection: true };
+      return {
+        success: true,
+        connectionId: connection._id,
+        tenants,
+        requiresTenantSelection: true,
+      };
     }
 
     // Trigger initial sync automatically
     await this.orchestrator.dispatchFullSync(
       connection._id.toString(),
-      req.orgId,
-      req.user.id,
+      orgId,
+      userId,
     );
     return { success: true, connectionId: connection._id, tenants };
   }
@@ -145,7 +153,7 @@ export class IntegrationsController {
   ) {
     if (!tenantId) throw new BadRequestException('tenantId is required');
     await this.xeroOAuth.selectTenant(connectionId, tenantId);
-    
+
     // Now trigger sync
     await this.orchestrator.dispatchFullSync(
       connectionId,
@@ -167,9 +175,9 @@ export class IntegrationsController {
     return this.myobOAuth.generateAuthUrl(req.orgId, req.user.id);
   }
 
+  @Public()
   @Get('connections/myob/callback')
   async handleMyobCallback(
-    @Req() req: any,
     @Query('code') code: string,
     @Query('state') state: string,
   ) {
@@ -181,9 +189,9 @@ export class IntegrationsController {
     return this.quickBooksOAuth.generateAuthUrl(req.orgId, req.user.id);
   }
 
+  @Public()
   @Get('connections/quickbooks/callback')
   async handleQuickBooksCallback(
-    @Req() req: any,
     @Query('code') code: string,
     @Query('state') state: string,
     @Query('realmId') realmId?: string,
@@ -196,8 +204,8 @@ export class IntegrationsController {
     );
     await this.orchestrator.dispatchFullSync(
       connection._id.toString(),
-      req.orgId,
-      req.user.id,
+      connection.orgId.toString(),
+      'system:oauth',
     );
     return { success: true, connectionId: connection._id };
   }

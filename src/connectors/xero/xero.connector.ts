@@ -137,12 +137,13 @@ export class XeroConnector extends BaseConnector {
   async refreshTokensIfNeeded(
     connection: AccountingConnection,
   ): Promise<AccountingConnection> {
-    const expiresAt = connection.credentials.tokenExpiresAt as Date;
+    const rawExpiresAt = connection.credentials?.tokenExpiresAt;
+    const expiresAt = rawExpiresAt ? new Date(rawExpiresAt) : new Date(0);
     const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
 
-    if (expiresAt <= fiveMinutesFromNow) {
+    if (isNaN(expiresAt.getTime()) || expiresAt <= fiveMinutesFromNow) {
       this.logger.log(
-        `Refreshing Xero token for connection ${connection._id} (expires ${expiresAt.toISOString()})`,
+        `Refreshing Xero token for connection ${connection._id} (expires ${isNaN(expiresAt.getTime()) ? 'unknown' : expiresAt.toISOString()})`,
       );
       return this.xeroOAuth.refreshAccessToken(connection);
     }
@@ -193,16 +194,16 @@ export class XeroConnector extends BaseConnector {
       clientId: process.env.XERO_CLIENT_ID!,
       clientSecret: process.env.XERO_CLIENT_SECRET!,
       redirectUris: [process.env.XERO_REDIRECT_URI!],
-   scopes: [
-  'openid',
-  'profile',
-  'email',
-  'accounting.invoices',
-  'accounting.payments',
-  'accounting.contacts',
-  'accounting.settings',
-  'offline_access',
-],
+      scopes: [
+        'openid',
+        'profile',
+        'email',
+        'accounting.invoices',
+        'accounting.payments',
+        'accounting.contacts',
+        'accounting.settings',
+        'offline_access',
+      ],
     });
 
     // Inject token set directly — skips the OAuth dance
@@ -211,7 +212,6 @@ export class XeroConnector extends BaseConnector {
       token_type: 'Bearer',
     });
 
-    await xero.updateTenants();
     return xero;
   }
 

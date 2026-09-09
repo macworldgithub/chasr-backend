@@ -35,10 +35,11 @@ export class SyncSchedulerService {
       dueConnections = await this.connectionModel.aggregate([
         {
           $match: {
-            status: { $in: ['connected', 'error'] },
+            status: 'connected',
             isDeleted: false,
-            provider: { $in: ['xero', 'myob'] }, // Only OAuth-based providers
+            provider: { $in: ['xero', 'quickbooks'] }, // Only OAuth-based providers
             'credentials.encryptedAccessToken': { $exists: true, $nin: [null, ''] },
+            'credentials.encryptedRefreshToken': { $exists: true, $nin: [null, ''] },
           },
         },
         {
