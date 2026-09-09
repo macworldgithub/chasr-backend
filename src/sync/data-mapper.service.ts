@@ -118,7 +118,7 @@ export class DataMapperService {
           chaseState: 'active',
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
   }
 
@@ -168,7 +168,7 @@ export class DataMapperService {
           chaseState: 'pending',
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
 
     // After upsert: evaluate chase enrollment (most business-critical behaviour)
@@ -218,7 +218,7 @@ export class DataMapperService {
           chaseState: 'pending',
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
 
     if (updated) {
@@ -257,7 +257,7 @@ export class DataMapperService {
           lastSyncedAt: new Date(),
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
   }
 
@@ -287,7 +287,7 @@ export class DataMapperService {
           externalSource: source,
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
 
     // Reconcile payment to invoices — update balanceDue and trigger chase halt

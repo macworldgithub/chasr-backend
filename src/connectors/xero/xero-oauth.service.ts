@@ -164,7 +164,7 @@ export class XeroOAuthService {
           },
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
 
     await this.auditLogger.log({
@@ -230,7 +230,7 @@ export class XeroOAuthService {
           'credentials.tenantName': tenant.tenantName,
         },
       },
-      { new: true },
+      { returnDocument: 'after' },
     ).exec() as Promise<AccountingConnection>;
   }
 
@@ -295,7 +295,7 @@ export class XeroOAuthService {
             ),
           },
         },
-        { new: true },
+        { returnDocument: 'after' },
       );
 
       this.logger.log(`Refreshed Xero token for connection ${connection._id}`);

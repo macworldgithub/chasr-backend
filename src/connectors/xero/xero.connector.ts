@@ -22,7 +22,7 @@ export class XeroConnector extends BaseConnector {
     super();
   }
 
-  // ── Public interface ──────────────────────────────────────────────────
+  // ── Public interface ─────────────────────────────────────────
 
   async fullSync(connection: AccountingConnection): Promise<SyncResult> {
     const xero = await this.buildAuthenticatedClient(connection);

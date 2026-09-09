@@ -171,7 +171,7 @@ export class QuickBooksOAuthService {
           },
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
 
     await this.auditLogger.log({
@@ -238,7 +238,7 @@ export class QuickBooksOAuthService {
           'credentials.xRefreshTokenExpiresIn': x_refresh_token_expires_in,
         },
       },
-      { new: true },
+      { returnDocument: 'after' },
     );
 
     this.logger.log(
