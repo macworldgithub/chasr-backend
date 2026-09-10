@@ -18,7 +18,7 @@ import { Injectable } from '@nestjs/common';
  * 3. NEWEST WINS for lastSyncedAt — always the current timestamp.
  *
  * This service provides utility methods to enforce these rules.
- * The actual enforcement happens in DataMapperService via $set/$setOnInsert.
+ * The actual enforcement happens in DataMapperService via $set/$s.0etOnInsert.
  */
 @Injectable()
 export class ConflictResolverService {
