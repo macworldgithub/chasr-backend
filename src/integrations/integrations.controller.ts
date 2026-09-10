@@ -389,12 +389,14 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   Req,
   UploadedFile,
   UseInterceptors,
   BadRequestException,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
@@ -424,6 +426,8 @@ import type { Provider } from './schemas/accounting-connection.schema';
 @ApiBearerAuth()
 @UseGuards(OrgScopeGuard)
 export class IntegrationsController {
+  private readonly frontendUrl = 'http://localhost:5173';
+
   constructor(
     private readonly integrationsService: IntegrationsService,
     private readonly xeroOAuth: XeroOAuthService,
@@ -496,28 +500,34 @@ export class IntegrationsController {
   async handleXeroCallback(
     @Query('code') code: string,
     @Query('state') state: string,
+    @Res() res: Response,
   ) {
-    if (!code || !state) throw new BadRequestException('Missing code or state');
-    const { connection, tenants, orgId, userId } =
-      await this.xeroOAuth.exchangeCode(code, state);
+    try {
+      if (!code || !state) {
+        return res.redirect(
+          `${this.frontendUrl}/oauth/callback?status=error&message=${encodeURIComponent('Xero authorization failed or was cancelled.')}`,
+        );
+      }
 
-    if (tenants.length > 1) {
-      // Defer sync, return tenants for the user to pick
-      return {
-        success: true,
-        connectionId: connection._id,
-        tenants,
-        requiresTenantSelection: true,
-      };
+      const { connection, tenants, orgId, userId } =
+        await this.xeroOAuth.exchangeCode(code, state);
+
+      if (tenants.length > 1) {
+        return res.redirect(`${this.frontendUrl}/`);
+      }
+
+      await this.orchestrator.dispatchFullSync(
+        connection._id.toString(),
+        orgId,
+        userId,
+      );
+
+      return res.redirect(`${this.frontendUrl}/`);
+    } catch (error) {
+      return res.redirect(
+        `${this.frontendUrl}/oauth/callback?status=error&message=${encodeURIComponent('Xero authorization failed or was cancelled.')}`,
+      );
     }
-
-    // Trigger initial sync automatically
-    await this.orchestrator.dispatchFullSync(
-      connection._id.toString(),
-      orgId,
-      userId,
-    );
-    return { success: true, connectionId: connection._id, tenants };
   }
 
   @Get('connections/xero/:id/tenants')
