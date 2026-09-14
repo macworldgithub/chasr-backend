@@ -19,12 +19,31 @@ export class SyncSchedulerService {
     private readonly orchestrator: SyncOrchestratorService,
   ) {}
 
+  isSyncDue(
+    lastSyncAt: Date | null | undefined,
+    syncFrequencyMinutes: number | undefined,
+    now: Date = new Date(),
+  ): boolean {
+    const frequencyMinutes = Number(syncFrequencyMinutes ?? 30);
+
+    if (
+      !lastSyncAt ||
+      !Number.isFinite(frequencyMinutes) ||
+      frequencyMinutes <= 0
+    ) {
+      return false;
+    }
+
+    const dueAt = new Date(lastSyncAt.getTime() + frequencyMinutes * 60_000);
+    return dueAt <= now;
+  }
+
   /**
-   * Runs every 5 minutes. Finds connections where:
-   *   lastSyncAt + syncFrequencyMinutes <= now
+   * Runs every 5 minutes. Finds connections whose
+   * lastSyncAt + syncFrequencyMinutes <= now.
    *
-   * Uses MongoDB aggregation with $addFields to compute nextSyncDue
-   * so the comparison is done server-side without loading all connections.
+   * Never-synced connections are intentionally excluded so they do not
+   * get re-queued forever every scheduler tick.
    */
   @Cron('*/5 * * * *')
   async scheduledSyncCheck(): Promise<void> {
@@ -37,9 +56,15 @@ export class SyncSchedulerService {
           $match: {
             status: 'connected',
             isDeleted: false,
-            provider: { $in: ['xero', 'quickbooks'] }, // Only OAuth-based providers
-            'credentials.encryptedAccessToken': { $exists: true, $nin: [null, ''] },
-            'credentials.encryptedRefreshToken': { $exists: true, $nin: [null, ''] },
+            provider: { $in: ['xero', 'quickbooks'] },
+            'credentials.encryptedAccessToken': {
+              $exists: true,
+              $nin: [null, ''],
+            },
+            'credentials.encryptedRefreshToken': {
+              $exists: true,
+              $nin: [null, ''],
+            },
           },
         },
         {
@@ -54,15 +79,15 @@ export class SyncSchedulerService {
         },
         {
           $match: {
-            $or: [
-              { lastSyncAt: null },          // Never synced — due immediately
-              { nextSyncDue: { $lte: now } },
-            ],
+            lastSyncAt: { $ne: null },
+            nextSyncDue: { $lte: now },
           },
         },
       ]);
     } catch (err) {
-      this.logger.error(`Failed to query connections for scheduled sync: ${err.message}`);
+      this.logger.error(
+        `Failed to query connections for scheduled sync: ${err.message}`,
+      );
       return;
     }
 
