@@ -13,7 +13,6 @@ describe('Xero Sync Integration', () => {
   let mockXeroConnector: any;
   let mockConnectionModel: any;
   let mockSyncLogModel: any;
-
   beforeEach(async () => {
     mockXeroConnector = {
       fullSync: jest.fn().mockResolvedValue({
@@ -55,6 +54,7 @@ describe('Xero Sync Integration', () => {
       ],
     }).compile();
 
+    
     processor = module.get<SyncProcessor>(SyncProcessor);
   });
 

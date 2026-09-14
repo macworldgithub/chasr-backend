@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Body,
   Param,
@@ -15,7 +16,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Response } from 'express';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
@@ -23,6 +24,7 @@ import {
   ApiConsumes,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -38,6 +40,14 @@ import {
   CsvCommitDto,
   CreateCredentialConnectionDto,
 } from './dto/integration.dtos';
+import {
+  ContactQueryDto,
+  CreateContactDto,
+  UpdateContactDto,
+  InvoiceQueryDto,
+  CreateInvoiceDto,
+  UpdateInvoiceDto,
+} from './dto/record.dtos';
 import type { Provider } from './schemas/accounting-connection.schema';
 
 @Controller('integrations')
@@ -57,7 +67,184 @@ export class IntegrationsController {
     private readonly configService: ConfigService,
   ) {
     this.frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+  }
+
+  // ── Contacts ────────────────────────────────────────────────────────────────
+
+  @Get('contacts')
+  @ApiOperation({ summary: 'List contacts with filtering and pagination' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Case-insensitive contact name search',
+    example: 'acme',
+  })
+  @ApiQuery({
+    name: 'externalSource',
+    required: false,
+    enum: ['xero', 'myob', 'csv'],
+  })
+  @ApiQuery({ name: 'chaseState', required: false, example: 'active' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    example: 1,
+    schema: { minimum: 1, default: 1 },
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    example: 25,
+    schema: { minimum: 1, maximum: 100, default: 25 },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated contacts: data and pagination metadata',
+  })
+  async listContacts(@Req() req: any, @Query() query: ContactQueryDto) {
+    return this.integrationsService.listContacts(req.orgId, query);
+  }
+
+  @Get('contacts/:id')
+  @ApiOperation({ summary: 'Get one contact' })
+  @ApiParam({
+    name: 'id',
+    description: 'Contact ObjectId',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiResponse({ status: 200, description: 'Contact details' })
+  async getContact(@Req() req: any, @Param('id') id: string) {
+    return this.integrationsService.getContact(req.orgId, id);
+  }
+
+  @Post('contacts')
+  @ApiOperation({ summary: 'Create a contact' })
+  @ApiBody({ type: CreateContactDto })
+  @ApiResponse({ status: 201, description: 'Contact created' })
+  async createContact(@Req() req: any, @Body() body: CreateContactDto) {
+    return this.integrationsService.createContact(req.orgId, body);
+  }
+
+  @Patch('contacts/:id')
+  @ApiOperation({ summary: 'Update a contact' })
+  @ApiParam({
+    name: 'id',
+    description: 'Contact ObjectId',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiBody({ type: UpdateContactDto })
+  @ApiResponse({ status: 200, description: 'Contact updated' })
+  async updateContact(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: UpdateContactDto,
+  ) {
+    return this.integrationsService.updateContact(req.orgId, id, body);
+  }
+
+  // ── Invoices ────────────────────────────────────────────────────────────────
+
+  @Get('invoices')
+  @ApiOperation({ summary: 'List invoices with filtering and pagination' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Case-insensitive invoice or credit note number search',
+    example: 'INV-1001',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['DRAFT', 'AUTHORISED', 'PAID', 'VOIDED', 'OVERDUE'],
+  })
+  @ApiQuery({
+    name: 'chaseState',
+    required: false,
+    enum: ['pending', 'active', 'paused', 'complete', 'excluded'],
+  })
+  @ApiQuery({
+    name: 'contactId',
+    required: false,
+    description: 'Filter by internal Contact ObjectId',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiQuery({
+    name: 'externalSource',
+    required: false,
+    enum: ['xero', 'myob', 'csv'],
+  })
+  @ApiQuery({
+    name: 'dueDateFrom',
+    required: false,
+    type: String,
+    example: '2026-09-01T00:00:00.000Z',
+  })
+  @ApiQuery({
+    name: 'dueDateTo',
+    required: false,
+    type: String,
+    example: '2026-09-30T23:59:59.999Z',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    example: 1,
+    schema: { minimum: 1, default: 1 },
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    example: 25,
+    schema: { minimum: 1, maximum: 100, default: 25 },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated invoices: data and pagination metadata',
+  })
+  async listInvoices(@Req() req: any, @Query() query: InvoiceQueryDto) {
+    return this.integrationsService.listInvoices(req.orgId, query);
+  }
+
+  @Get('invoices/:id')
+  @ApiOperation({ summary: 'Get one invoice' })
+  @ApiParam({
+    name: 'id',
+    description: 'Invoice ObjectId',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiResponse({ status: 200, description: 'Invoice details' })
+  async getInvoice(@Req() req: any, @Param('id') id: string) {
+    return this.integrationsService.getInvoice(req.orgId, id);
+  }
+
+  @Post('invoices')
+  @ApiOperation({ summary: 'Create an invoice' })
+  @ApiBody({ type: CreateInvoiceDto })
+  @ApiResponse({ status: 201, description: 'Invoice created' })
+  async createInvoice(@Req() req: any, @Body() body: CreateInvoiceDto) {
+    return this.integrationsService.createInvoice(req.orgId, body);
+  }
+
+  @Patch('invoices/:id')
+  @ApiOperation({ summary: 'Update an invoice' })
+  @ApiParam({
+    name: 'id',
+    description: 'Invoice ObjectId',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiBody({ type: UpdateInvoiceDto })
+  @ApiResponse({ status: 200, description: 'Invoice updated' })
+  async updateInvoice(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: UpdateInvoiceDto,
+  ) {
+    return this.integrationsService.updateInvoice(req.orgId, id, body);
   }
 
   // ── Connection Management ───────────────────────────────────────────────────
@@ -184,7 +371,10 @@ export class IntegrationsController {
 
   @Get('connections/:id/organisation')
   @ApiOperation({ summary: 'Get synced organisation info for a connection' })
-  async getOrganisationInfo(@Req() req: any, @Param('id') connectionId: string) {
+  async getOrganisationInfo(
+    @Req() req: any,
+    @Param('id') connectionId: string,
+  ) {
     return this.integrationsService.getOrganisation(req.orgId, connectionId);
   }
 

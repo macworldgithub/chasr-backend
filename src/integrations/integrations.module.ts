@@ -18,6 +18,8 @@ import {
   XeroOrganisation,
   XeroOrganisationSchema,
 } from './schemas/xero-organisation.schema';
+import { Contact, ContactSchema } from './schemas/contact.schema';
+import { Invoice, InvoiceSchema } from './schemas/invoice.schema';
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import {
       { name: AccountingConnection.name, schema: AccountingConnectionSchema },
       { name: SyncLog.name, schema: SyncLogSchema },
       { name: XeroOrganisation.name, schema: XeroOrganisationSchema },
+      { name: Contact.name, schema: ContactSchema },
+      { name: Invoice.name, schema: InvoiceSchema },
     ]),
     SyncModule,
     ConnectorsModule,
