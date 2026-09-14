@@ -8,7 +8,7 @@ import { AuthService } from './auth.service';
 @Module({
   imports: [
     ConfigModule,
-    JwtModule.registerAsync({
+    JwtModule.registerAsync({       
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
@@ -19,7 +19,7 @@ import { AuthService } from './auth.service';
             'JWT_SECRET is not set. Add it to your environment or .env file.',
           );
         }
-
+//jkh
         return {
           global: true,
           secret,
