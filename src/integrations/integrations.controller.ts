@@ -1,4 +1,3 @@
-// src/integrations/integrations.controller.ts
 import {
   Controller,
   Get,
@@ -55,7 +54,7 @@ import type { Provider } from './schemas/accounting-connection.schema';
 @ApiBearerAuth()
 @UseGuards(OrgScopeGuard)
 export class IntegrationsController {
-  private readonly frontendUrl: string;
+  private readonly frontendUrl: string = 'http://localhost:5173';
 
   constructor(
     private readonly integrationsService: IntegrationsService,
@@ -66,8 +65,6 @@ export class IntegrationsController {
     private readonly orchestrator: SyncOrchestratorService,
     private readonly configService: ConfigService,
   ) {
-    // Doc 2 defaulted to 5173 (Vite dev); Doc 1 defaulted to 3000.
-    // Use env var as the source of truth; fall back to 5173 for local dev.
     this.frontendUrl =
       this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
   }
@@ -317,7 +314,7 @@ export class IntegrationsController {
     try {
       if (!code || !state) {
         return res.redirect(
-          `${this.frontendUrl}/integrations/callback?status=error&provider=xero&message=${encodeURIComponent('Missing code or state')}`,
+          `${this.frontendUrl}/oauth/callback?status=error&message=${encodeURIComponent('Xero authorization failed or was cancelled.')}`,
         );
       }
 
@@ -325,26 +322,19 @@ export class IntegrationsController {
         await this.xeroOAuth.exchangeCode(code, state);
 
       if (tenants.length > 1) {
-        // Defer sync — redirect with tenant-selection flag so the frontend
-        // can prompt the user to pick a tenant.
-        return res.redirect(
-          `${this.frontendUrl}/integrations/callback?status=success&provider=xero&connectionId=${connection._id}&requiresTenantSelection=true`,
-        );
+        return res.redirect(`${this.frontendUrl}/`);
       }
 
-      // Single tenant: trigger initial sync automatically.
       await this.orchestrator.dispatchFullSync(
         connection._id.toString(),
         orgId,
         userId,
       );
 
-      return res.redirect(
-        `${this.frontendUrl}/integrations/callback?status=success&provider=xero&connectionId=${connection._id}`,
-      );
+      return res.redirect(`${this.frontendUrl}/`);
     } catch (error) {
       return res.redirect(
-        `${this.frontendUrl}/integrations/callback?status=error&provider=xero&message=${encodeURIComponent(error.message || 'OAuth failed')}`,
+        `${this.frontendUrl}/oauth/callback?status=error&message=${encodeURIComponent('Xero authorization failed or was cancelled.')}`,
       );
     }
   }
@@ -364,6 +354,8 @@ export class IntegrationsController {
   ) {
     if (!tenantId) throw new BadRequestException('tenantId is required');
     await this.xeroOAuth.selectTenant(connectionId, tenantId);
+
+    // Now trigger sync
     await this.orchestrator.dispatchFullSync(
       connectionId,
       req.orgId,
@@ -392,23 +384,8 @@ export class IntegrationsController {
   async handleMyobCallback(
     @Query('code') code: string,
     @Query('state') state: string,
-    @Res() res: Response,
   ) {
-    try {
-      if (!code || !state) {
-        return res.redirect(
-          `${this.frontendUrl}/integrations/callback?status=error&provider=myob&message=${encodeURIComponent('Missing code or state')}`,
-        );
-      }
-      const connection = await this.myobOAuth.exchangeCode(code, state);
-      return res.redirect(
-        `${this.frontendUrl}/integrations/callback?status=success&provider=myob&connectionId=${connection._id}`,
-      );
-    } catch (error) {
-      return res.redirect(
-        `${this.frontendUrl}/integrations/callback?status=error&provider=myob&message=${encodeURIComponent(error.message || 'OAuth failed')}`,
-      );
-    }
+    return this.myobOAuth.exchangeCode(code, state);
   }
 
   @Post('connections/quickbooks/auth-url')
@@ -427,25 +404,30 @@ export class IntegrationsController {
     try {
       if (!code || !state) {
         return res.redirect(
-          `${this.frontendUrl}/integrations/callback?status=error&provider=quickbooks&message=${encodeURIComponent('Missing code or state')}`,
+          `${this.frontendUrl}/oauth/callback?status=error&message=${encodeURIComponent(
+            'QuickBooks authorization failed or was cancelled.',
+          )}`,
         );
       }
+
       const connection = await this.quickBooksOAuth.exchangeCode(
         code,
         state,
         realmId,
       );
+
       await this.orchestrator.dispatchFullSync(
         connection._id.toString(),
         connection.orgId.toString(),
         'system:oauth',
       );
+
+      return res.redirect(`${this.frontendUrl}/`);
+    } catch {
       return res.redirect(
-        `${this.frontendUrl}/integrations/callback?status=success&provider=quickbooks&connectionId=${connection._id}`,
-      );
-    } catch (error) {
-      return res.redirect(
-        `${this.frontendUrl}/integrations/callback?status=error&provider=quickbooks&message=${encodeURIComponent(error.message || 'OAuth failed')}`,
+        `${this.frontendUrl}/oauth/callback?status=error&message=${encodeURIComponent(
+          'QuickBooks authorization failed or was cancelled.',
+        )}`,
       );
     }
   }
@@ -521,6 +503,7 @@ export class IntegrationsController {
 
   @Post('csv/commit')
   async commitCsvUpload(@Req() req: any, @Body() body: CsvCommitDto) {
+    // Validate first (to get row counts etc. for audit/log metadata if desired)
     const validation = await this.csvConnector.validateMappings(
       body.uploadId,
       body.mappings,
