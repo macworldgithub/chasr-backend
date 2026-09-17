@@ -54,7 +54,7 @@ import type { Provider } from './schemas/accounting-connection.schema';
 @ApiBearerAuth()
 @UseGuards(OrgScopeGuard)
 export class IntegrationsController {
-  private readonly frontendUrl: string = 'http://localhost:5173';
+  private readonly frontendUrl: string = 'https://chasr-frontend.vercel.app';
 
   constructor(
     private readonly integrationsService: IntegrationsService,
@@ -66,7 +66,7 @@ export class IntegrationsController {
     private readonly configService: ConfigService,
   ) {
     this.frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+      this.configService.get<string>('FRONTEND_URL') || 'https://chasr-frontend.vercel.app';
   }
 
   // ── Contacts ────────────────────────────────────────────────────────────────

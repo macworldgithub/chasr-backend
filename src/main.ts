@@ -5,10 +5,10 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
-app.enableCors({
-  origin: 'http://localhost:5173',
-  credentials: true,
-});
+  app.enableCors({
+    origin: 'https://chasr-frontend.vercel.app',
+    credentials: true,
+  });
 
   const config = new DocumentBuilder()
     .setTitle('Chasr Accounting Integrations API')
